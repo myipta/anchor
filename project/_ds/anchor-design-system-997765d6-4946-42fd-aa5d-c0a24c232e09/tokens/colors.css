@@ -1,0 +1,121 @@
+/* ============================================================
+   Anchor — Color tokens
+   A light, airy palette: cool paper neutrals with a warm
+   sunset→pink→violet signature gradient for "fun highlights".
+   ============================================================ */
+
+:root {
+  /* ---- Paper / surfaces (cool, faintly lavender whites) ---- */
+  --paper-0:   #FFFFFF;
+  --paper-50:  #FAFAFD;
+  --paper-100: #F4F5FA;
+  --paper-150: #ECEDF6;
+  --paper-200: #E3E5F0;
+
+  /* ---- Ink / neutrals (near-black carries a hint of indigo) ---- */
+  --ink-900: #16172A;
+  --ink-800: #232540;
+  --ink-700: #353756;
+  --ink-600: #4E5072;
+  --ink-500: #6C6E8E;
+  --ink-400: #9092AD;
+  --ink-300: #B6B8CC;
+  --ink-200: #D5D6E4;
+  --ink-100: #E7E8F1;
+
+  /* ---- Violet (primary brand) ---- */
+  --violet-50:  #F1EEFF;
+  --violet-100: #E4DEFF;
+  --violet-200: #C9BEFF;
+  --violet-300: #A793FF;
+  --violet-400: #8B72FB;
+  --violet-500: #6C5CE7;   /* primary */
+  --violet-600: #5A48D6;   /* hover   */
+  --violet-700: #4836B4;   /* active  */
+
+  /* ---- Coral / sunset (secondary warm accent) ---- */
+  --coral-50:  #FFF1EA;
+  --coral-100: #FFE2D4;
+  --coral-200: #FFC6AC;
+  --coral-300: #FFA079;
+  --coral-400: #FF865B;
+  --coral-500: #FB7242;   /* secondary */
+  --coral-600: #ED5A2A;
+
+  /* ---- Pink (gradient mid-tone / playful highlight) ---- */
+  --pink-100: #FFE3F1;
+  --pink-300: #FF93C7;
+  --pink-500: #F857A6;
+  --pink-600: #E13C8E;
+
+  /* ---- Semantic hues ---- */
+  --green-100: #D6F5E6;
+  --green-500: #14A06E;
+  --green-600: #0E865B;
+
+  --amber-100: #FCEFCF;
+  --amber-500: #ECA800;
+  --amber-600: #C98A00;
+
+  --red-100: #FEE0E6;
+  --red-500: #F23E63;
+  --red-600: #D72850;
+
+  /* ---- Signature gradients ---- */
+  --gradient-sunset: linear-gradient(120deg, #FF9E5E 0%, #F857A6 52%, #8B5CF6 100%);   /* @kind color */
+  --gradient-bloom:  radial-gradient(120% 120% at 15% 12%, #FFC59E 0%, #FF8FC0 40%, #A98BFF 78%, #8B72FB 100%);  /* @kind color */
+  --gradient-violet: linear-gradient(135deg, #8B72FB 0%, #6C5CE7 100%);   /* @kind color */
+  --gradient-haze:   linear-gradient(180deg, #FAFAFD 0%, #F1EEFF 100%);   /* @kind color */
+
+  /* ============================================================
+     Semantic aliases — reference these in components
+     ============================================================ */
+
+  /* Text */
+  --text-strong:   var(--ink-900);
+  --text-body:     var(--ink-700);
+  --text-muted:    var(--ink-500);
+  --text-subtle:   var(--ink-400);
+  --text-on-brand: #FFFFFF;
+  --text-link:     var(--violet-600);
+
+  /* Surfaces */
+  --surface-app:      var(--paper-50);
+  --surface-card:     var(--paper-0);
+  --surface-sunken:   var(--paper-100);
+  --surface-raised:   var(--paper-0);
+  --surface-hover:    var(--paper-100);
+  --surface-tint:     var(--violet-50);
+
+  /* Borders & lines */
+  --border-subtle: var(--ink-100);
+  --border-default: var(--ink-200);
+  --border-strong: var(--ink-300);
+  --border-focus:  var(--violet-400);
+
+  /* Brand intent */
+  --brand:          var(--violet-500);
+  --brand-hover:    var(--violet-600);
+  --brand-active:   var(--violet-700);
+  --brand-soft:     var(--violet-50);
+  --brand-on-soft:  var(--violet-600);
+
+  --accent:         var(--coral-500);
+  --accent-soft:    var(--coral-50);
+  --accent-on-soft: var(--coral-600);
+
+  /* Anchor pin (the product's signature marker) */
+  --anchor:         var(--coral-500);
+  --anchor-soft:    var(--coral-100);
+
+  /* Status */
+  --success:      var(--green-500);
+  --success-soft: var(--green-100);
+  --warning:      var(--amber-500);
+  --warning-soft: var(--amber-100);
+  --danger:       var(--red-500);
+  --danger-soft:  var(--red-100);
+
+  /* Focus ring */
+  --ring: 0 0 0 3px var(--violet-200);
+}

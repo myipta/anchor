@@ -1,0 +1,48 @@
+/* ============================================================
+   Anchor — Spacing & layout tokens
+   4px base grid. Use the --space-* scale for padding, gaps, margins.
+   ============================================================ */
+
+:root {
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  32px;
+  --space-8:  40px;
+  --space-9:  48px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+
+  /* ---- Corner radii (soft, generous) ---- */
+  --radius-xs:   8px;
+  --radius-sm:   12px;
+  --radius-md:   16px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-2xl:  36px;
+  --radius-pill: 999px;
+  --radius-card: var(--radius-lg);
+
+  /* ---- Containers ---- */
+  --container-sm:  640px;
+  --container-md:  920px;
+  --container-lg:  1200px;
+  --container-xl:  1440px;
+
+  /* ---- Control sizing ---- */
+  --control-sm: 32px;
+  --control-md: 40px;
+  --control-lg: 48px;
+
+  /* ---- Z-index ladder ---- */
+  --z-base:    1;    /* @kind other */
+  --z-sticky:  100;  /* @kind other */
+  --z-overlay: 200;  /* @kind other */
+  --z-modal:   300;  /* @kind other */
+  --z-toast:   400;  /* @kind other */
+}

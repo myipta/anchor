@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/colors.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/typography.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/elevation.css">
+</helmet>
+<div style="position:relative; width:100%; height:{{ height }}; overflow:hidden; background:#E9EBF3;">
+
+  <!-- muted realistic-ish basemap -->
+  <svg viewBox="0 0 390 360" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%; display:block;">
+    <rect x="0" y="0" width="390" height="360" fill="#E9EBF3"></rect>
+    <!-- bay (bottom-right) -->
+    <path d="M250 360 C265 300 320 286 390 292 L390 360 Z" fill="#CFE3EE"></path>
+    <!-- river diagonal -->
+    <path d="M-20 120 C70 150 120 210 210 250 C275 279 320 300 360 360 L335 360 C300 312 250 292 195 268 C110 230 60 178 -20 152 Z" fill="#CFE3EE" opacity="0.85"></path>
+    <!-- parks -->
+    <rect x="36" y="46" width="78" height="58" rx="14" fill="#D8ECDB"></rect>
+    <rect x="292" y="120" width="74" height="64" rx="16" fill="#D8ECDB"></rect>
+    <rect x="150" y="300" width="60" height="46" rx="12" fill="#D8ECDB"></rect>
+    <!-- city blocks (loose irregular grid) -->
+    <g fill="#F4F5FA">
+      <rect x="132" y="36" width="60" height="44" rx="7"></rect>
+      <rect x="200" y="30" width="52" height="40" rx="7"></rect>
+      <rect x="262" y="40" width="58" height="50" rx="7"></rect>
+      <rect x="40" y="120" width="56" height="48" rx="7"></rect>
+      <rect x="104" y="116" width="46" height="40" rx="7"></rect>
+      <rect x="158" y="96" width="62" height="46" rx="7"></rect>
+      <rect x="228" y="96" width="48" height="42" rx="7"></rect>
+      <rect x="40" y="186" width="62" height="52" rx="7"></rect>
+      <rect x="112" y="176" width="52" height="46" rx="7"></rect>
+      <rect x="248" y="170" width="56" height="44" rx="7"></rect>
+      <rect x="316" y="206" width="52" height="48" rx="7"></rect>
+      <rect x="44" y="262" width="58" height="50" rx="7"></rect>
+      <rect x="116" y="246" width="48" height="42" rx="7"></rect>
+      <rect x="232" y="248" width="46" height="40" rx="7"></rect>
+    </g>
+    <g fill="#EAEBF4">
+      <rect x="196" y="78" width="26" height="58" rx="6"></rect>
+      <rect x="100" y="60" width="26" height="50" rx="6"></rect>
+      <rect x="300" y="100" width="22" height="92" rx="6"></rect>
+      <rect x="170" y="160" width="68" height="22" rx="6"></rect>
+    </g>
+    <!-- roads -->
+    <g stroke="#FFFFFF" stroke-linecap="round" fill="none">
+      <path d="M0 92 L390 70" stroke-width="6"></path>
+      <path d="M0 160 L300 150 L390 196" stroke-width="6"></path>
+      <path d="M30 0 L70 360" stroke-width="5"></path>
+      <path d="M150 0 L196 300" stroke-width="5"></path>
+      <path d="M250 0 L300 250" stroke-width="5"></path>
+      <path d="M0 240 L240 240" stroke-width="4" opacity="0.8"></path>
+    </g>
+  </svg>
+
+  <!-- dashed route between anchors -->
+  <sc-if value="{{ connect }}" hint-placeholder-val="{{ true }}">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;">
+      <polyline points="{{ routePoints }}" fill="none" stroke="#8B72FB" stroke-width="2.5" stroke-dasharray="1.5 3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity="0.9"></polyline>
+    </svg>
+  </sc-if>
+
+  <!-- pins -->
+  <sc-for list="{{ pins }}" as="pin" hint-placeholder-count="4">
+    <div style="position:absolute; left:{{ pin.left }}; top:{{ pin.top }}; transform:translate(-50%,-100%); z-index:{{ pin.z }}; will-change:transform;">
+      <sc-if value="{{ pin.isYou }}" hint-placeholder-val="{{ false }}">
+        <div style="transform:translateY(50%);">
+          <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:34px; height:34px; border-radius:50%; background:rgba(108,92,231,0.18);"></div>
+          <div style="position:relative; width:18px; height:18px; border-radius:50%; background:#6C5CE7; border:3px solid #fff; box-shadow:0 2px 6px rgba(108,92,231,0.45);"></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ pin.isPlace }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; flex-direction:column; align-items:center; filter:drop-shadow(0 6px 10px {{ pin.shadow }});">
+          <sc-if value="{{ pin.showLabel }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-bottom:6px; background:#fff; color:#16172A; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:12px; line-height:1; white-space:nowrap; padding:6px 9px; border-radius:999px; box-shadow:0 2px 8px rgba(22,23,42,0.16);">{{ pin.label }}</div>
+          </sc-if>
+          <svg width="{{ pin.w }}" height="{{ pin.h }}" viewBox="0 0 30 38">
+            <path d="M15 0 C6.7 0 0 6.7 0 15 C0 26 12 33 15 38 C18 33 30 26 30 15 C30 6.7 23.3 0 15 0 Z" fill="{{ pin.color }}"></path>
+            <circle cx="15" cy="14.5" r="9.5" fill="#fff"></circle>
+            <text x="15" y="15" text-anchor="middle" dominant-baseline="central" font-family="'Schibsted Grotesk',sans-serif" font-weight="700" font-size="13" fill="{{ pin.color }}">{{ pin.num }}</text>
+          </svg>
+        </div>
+      </sc-if>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:360},&quot;pins&quot;:{&quot;editor&quot;:null,&quot;default&quot;:[]},&quot;connect&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true},&quot;selected&quot;:{&quot;editor&quot;:null,&quot;default&quot;:null},&quot;height&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;100%&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const raw = this.props.pins || [];
+    const sel = this.props.selected;
+    const pins = raw.map((p, i) => {
+      const isYou = p.kind === 'you';
+      const isAnchor = p.kind === 'anchor';
+      const color = isAnchor ? '#FB7242' : '#6C5CE7';
+      const big = (sel != null && sel === p.id) || p.big;
+      return {
+        ...p,
+        left: p.x + '%',
+        top: p.y + '%',
+        isYou,
+        isPlace: !isYou,
+        color,
+        shadow: isAnchor ? 'rgba(251,114,66,0.45)' : 'rgba(108,92,231,0.40)',
+        num: p.num != null ? p.num : (i + 1),
+        showLabel: !!(big && p.label),
+        w: big ? 38 : 30,
+        h: big ? 48 : 38,
+        z: big ? 30 : (isAnchor ? 20 : 12),
+      };
+    });
+    // route across all itinerary stops, in their given order
+    const routePins = raw.filter(p => p.kind !== 'you');
+    const routePoints = routePins.map(p => `${p.x},${p.y}`).join(' ');
+    return {
+      pins,
+      routePoints,
+      connect: this.props.connect != null ? this.props.connect : true,
+      height: this.props.height || '100%',
+    };
+  }
+}
+</script>
+</body>
+</html>

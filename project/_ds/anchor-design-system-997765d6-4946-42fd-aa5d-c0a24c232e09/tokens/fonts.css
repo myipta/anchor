@@ -1,0 +1,12 @@
+/* ============================================================
+   Anchor — Webfonts
+   Loaded from Google Fonts CDN. The @font-face rules that back
+   these families live in the imported stylesheets below, so the
+   compiler ships them to consumers automatically.
+
+   Display : Schibsted Grotesk  — friendly, confident headlines
+   Text/UI : Hanken Grotesk      — warm, highly legible body
+   Mono    : Geist Mono          — prices, codes, coordinates
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');

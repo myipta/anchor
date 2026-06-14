@@ -1,0 +1,35 @@
+/* ============================================================
+   Anchor — Elevation tokens
+   Soft, low-opacity, cool-tinted shadows. Light and airy —
+   never heavy or grey. Stacked layers give a gentle float.
+   ============================================================ */
+
+:root {
+  --shadow-xs: 0 1px 2px rgba(22, 23, 42, 0.05);
+  --shadow-sm: 0 1px 2px rgba(22, 23, 42, 0.06),
+               0 2px 6px rgba(22, 23, 42, 0.04);
+  --shadow-md: 0 2px 4px rgba(22, 23, 42, 0.05),
+               0 8px 20px rgba(22, 23, 42, 0.07);
+  --shadow-lg: 0 4px 8px rgba(22, 23, 42, 0.05),
+               0 18px 40px rgba(22, 23, 42, 0.10);
+  --shadow-xl: 0 8px 16px rgba(22, 23, 42, 0.06),
+               0 32px 64px rgba(22, 23, 42, 0.14);
+
+  /* Coloured glow — for primary CTAs and the anchor pin */
+  --shadow-brand: 0 6px 18px rgba(108, 92, 231, 0.30);
+  --shadow-coral: 0 6px 18px rgba(251, 114, 66, 0.28);
+
+  /* Inset for pressed / sunken fields */
+  --shadow-inset: inset 0 1px 2px rgba(22, 23, 42, 0.06);
+
+  /* Hairline used as a crisp 1px border-as-shadow */
+  --ring-border: inset 0 0 0 1px var(--border-subtle);
+
+  /* ---- Motion ---- */
+  --ease-out:   cubic-bezier(0.22, 1, 0.36, 1);    /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* @kind other */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);/* @kind other */
+  --dur-fast:   120ms;   /* @kind other */
+  --dur-base:   200ms;   /* @kind other */
+  --dur-slow:   320ms;   /* @kind other */
+}

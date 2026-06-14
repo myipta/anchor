@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+</helmet>
+<div style="display:flex; flex-direction:column; padding:4px 18px 8px;">
+  <sc-for list="{{ stops }}" as="s" hint-placeholder-count="3">
+    <div style="display:flex; gap:14px; align-items:stretch;">
+      <!-- rail -->
+      <div style="display:flex; flex-direction:column; align-items:center; width:34px; flex-shrink:0;">
+        <div style="width:34px; height:34px; border-radius:50%; background:{{ s.nodeBg }}; border:{{ s.nodeBorder }}; color:{{ s.nodeInk }}; display:flex; align-items:center; justify-content:center; font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:15px; box-shadow:{{ s.nodeShadow }}; z-index:2;">{{ s.num }}</div>
+        <sc-if value="{{ s.hasLine }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1; width:2px; background:repeating-linear-gradient(#D5D6E4 0 5px, transparent 5px 10px); margin:4px 0;"></div>
+        </sc-if>
+      </div>
+      <!-- card -->
+      <div style="flex:1; padding-bottom:{{ s.gap }};">
+        <div style="font-family:'Geist Mono',monospace; font-size:12px; font-weight:500; color:#6C6E8E; letter-spacing:0.02em; margin:6px 0 6px;">{{ s.time }}</div>
+
+        <sc-if value="{{ s.isAnchor }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ s.open }}" style="background:#fff; border-radius:20px; box-shadow:0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07); overflow:hidden; cursor:pointer;">
+            <div style="display:flex; gap:12px; padding:13px 14px;">
+              <div style="width:52px; height:52px; border-radius:14px; flex-shrink:0; background:{{ s.catGrad }}; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(251,114,66,0.22);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              </div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:7px;">
+                  <span style="display:inline-flex; align-items:center; gap:4px; background:#FFE2D4; color:#ED5A2A; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:11px; letter-spacing:0.04em; text-transform:uppercase; padding:3px 8px; border-radius:999px;">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="#ED5A2A"><path d="M12 2a5 5 0 0 0-5 5c0 1.9 1.1 3.5 2.7 4.4L8 22l4-2 4 2-1.7-10.6A5 5 0 0 0 17 7a5 5 0 0 0-5-5Z"></path></svg>
+                    Anchor</span>
+                  <span style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; color:#9092AD;">{{ s.catLabel }}</span>
+                </div>
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:18px; color:#16172A; margin-top:5px; line-height:1.15;">{{ s.name }}</div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:4px; font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#6C6E8E;">
+                  <span>{{ s.area }}</span>
+                  <span style="display:inline-flex; align-items:center; gap:3px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:12px; color:#353756;">{{ s.rating }}</span></span>
+                  <span style="display:inline-flex; align-items:center; gap:3px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9092AD" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:12px; color:#353756;">{{ s.mins }}m</span></span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:9px; padding:11px 14px; background:#FFF6F1; border-top:1px solid #FFE9DD;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ED5A2A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:1px;"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>
+              <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#7a4a30; line-height:1.4;">{{ s.text }}</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ s.isSuggest }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff; border-radius:20px; border:1.5px dashed #C9BEFF; box-shadow:0 1px 2px rgba(22,23,42,0.05); overflow:hidden;">
+            <div onClick="{{ s.open }}" style="display:flex; gap:12px; padding:13px 14px; cursor:pointer;">
+              <div style="width:52px; height:52px; border-radius:14px; flex-shrink:0; background:{{ s.catGrad }}; display:flex; align-items:center; justify-content:center; opacity:0.95;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.6 4.9a2 2 0 0 0 1.3 1.3L20 9.8l-4 3a2 2 0 0 0-.7 2.1L17 20l-4.4-2.8a2 2 0 0 0-2.2 0L6 20l1.7-5.1A2 2 0 0 0 7 12.8l-4-3 5.1-1.6A2 2 0 0 0 9.4 6.9Z"></path></svg>
+              </div>
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:7px;">
+                  <span style="display:inline-flex; align-items:center; gap:4px; background:#F1EEFF; color:#5A48D6; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:11px; letter-spacing:0.04em; text-transform:uppercase; padding:3px 8px; border-radius:999px;">Suggested</span>
+                  <span style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; color:#9092AD;">{{ s.catLabel }}</span>
+                </div>
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:18px; color:#16172A; margin-top:5px; line-height:1.15;">{{ s.name }}</div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:4px; font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#6C6E8E;">
+                  <span>{{ s.area }}</span>
+                  <span style="display:inline-flex; align-items:center; gap:3px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:12px; color:#353756;">{{ s.rating }}</span></span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:9px; padding:0 14px 12px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#8B72FB" style="flex-shrink:0; margin-top:1px;"><path d="M12 2l1.6 4.9a2 2 0 0 0 1.3 1.3L20 9.8l-4 3a2 2 0 0 0-.7 2.1L17 20l-4.4-2.8a2 2 0 0 0-2.2 0L6 20l1.7-5.1A2 2 0 0 0 7 12.8l-4-3 5.1-1.6A2 2 0 0 0 9.4 6.9Z"></path></svg>
+              <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13.5px; color:#4836B4; line-height:1.45; font-style:italic;">{{ s.text }}</div>
+            </div>
+            <sc-if value="{{ s.added }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; background:#F1EEFF; border-top:1px solid #E4DEFF;">
+                <span style="display:inline-flex; align-items:center; gap:6px; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:13.5px; color:#5A48D6;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A48D6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Added to your day</span>
+                <button onClick="{{ s.skip }}" style="border:none; background:transparent; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:13.5px; color:#9092AD; cursor:pointer; padding:4px;">Remove</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ s.notAdded }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; gap:10px; padding:11px 14px; background:#FAFAFD; border-top:1px solid #ECEDF6;">
+                <button onClick="{{ s.add }}" style="flex:1; border:none; background:#6C5CE7; color:#fff; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:14px; padding:10px; border-radius:12px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 4px 12px rgba(108,92,231,0.28);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add to day</button>
+                <button onClick="{{ s.skip }}" style="border:1.5px solid #E3E5F0; background:#fff; color:#6C6E8E; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:14px; padding:10px 16px; border-radius:12px; cursor:pointer;">Skip</button>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ s.travel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:7px; padding:11px 2px 3px; color:#9092AD; font-family:'Hanken Grotesk',sans-serif; font-size:12.5px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="1.6"></circle><path d="M11 7l-2 4 3 2 1 5M9 11l-3 1-1 4M13 13l3 1"></path></svg>
+            {{ s.travel }}
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:560},&quot;stops&quot;:{&quot;editor&quot;:null,&quot;default&quot;:[]},&quot;onOpen&quot;:{&quot;editor&quot;:null,&quot;default&quot;:null},&quot;onAdd&quot;:{&quot;editor&quot;:null,&quot;default&quot;:null},&quot;onSkip&quot;:{&quot;editor&quot;:null,&quot;default&quot;:null}}">
+class Component extends DCLogic {
+  renderVals() {
+    const stops = (this.props.stops || []).map((s) => {
+      const isAnchor = s.kind === 'anchor';
+      const color = isAnchor ? '#FB7242' : '#6C5CE7';
+      return {
+        ...s,
+        isAnchor,
+        isSuggest: !isAnchor,
+        added: !!s.added,
+        notAdded: !isAnchor && !s.added,
+        nodeBg: isAnchor ? '#FB7242' : (s.added ? '#6C5CE7' : '#F1EEFF'),
+        nodeInk: isAnchor ? '#fff' : (s.added ? '#fff' : '#6C5CE7'),
+        nodeBorder: isAnchor ? 'none' : (s.added ? 'none' : '2px dashed #A793FF'),
+        nodeShadow: isAnchor ? '0 4px 10px rgba(251,114,66,0.35)' : (s.added ? '0 4px 10px rgba(108,92,231,0.30)' : 'none'),
+        gap: s.travel ? '4px' : '22px',
+        catGrad: s.catGrad,
+        open: this.props.onOpen ? () => this.props.onOpen(s.id) : null,
+        add: this.props.onAdd ? () => this.props.onAdd(s.id) : null,
+        skip: this.props.onSkip ? () => this.props.onSkip(s.id) : null,
+      };
+    });
+    return { stops };
+  }
+}
+</script>
+</body>
+</html>

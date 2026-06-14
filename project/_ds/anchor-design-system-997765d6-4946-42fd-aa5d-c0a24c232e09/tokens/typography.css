@@ -1,0 +1,65 @@
+/* ============================================================
+   Anchor — Typography tokens
+   Display: Schibsted Grotesk · Text/UI: Hanken Grotesk · Mono: Geist Mono
+   ============================================================ */
+
+:root {
+  /* ---- Families ---- */
+  --font-display: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-text:    'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ---- Weights ---- */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-extra:    800;
+
+  /* ---- Type scale (px) ---- */
+  --text-display:  56px;   /* hero          */
+  --text-h1:       40px;
+  --text-h2:       30px;
+  --text-h3:       24px;
+  --text-h4:       20px;
+  --text-lg:       18px;
+  --text-base:     16px;
+  --text-sm:       14px;
+  --text-xs:       13px;
+  --text-2xs:      11px;   /* labels, eyebrows */
+
+  /* ---- Line heights ---- */
+  --leading-tight:   1.06;
+  --leading-snug:    1.2;
+  --leading-normal:  1.45;
+  --leading-relaxed: 1.6;
+
+  /* ---- Letter spacing ---- */
+  --tracking-tight:  -0.02em;
+  --tracking-snug:   -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.04em;
+  --tracking-eyebrow: 0.12em;
+
+  /* ---- Semantic roles ---- */
+  --type-display-family: var(--font-display);
+  --type-display-weight: var(--weight-bold);
+  --type-heading-family: var(--font-display);
+  --type-heading-weight: var(--weight-semibold);
+  --type-body-family:    var(--font-text);
+  --type-eyebrow-family: var(--font-text);
+}
+
+/* ---- Base element defaults (consumers inherit these) ---- */
+html {
+  font-family: var(--font-text);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body {
+  font-family: var(--font-text);
+  color: var(--text-body);
+  line-height: var(--leading-normal);
+  font-weight: var(--weight-regular);
+}

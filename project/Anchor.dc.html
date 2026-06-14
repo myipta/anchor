@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/colors.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/typography.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/anchor-design-system-997765d6-4946-42fd-aa5d-c0a24c232e09/tokens/elevation.css">
+<style>
+  .an-scroll::-webkit-scrollbar{ width:0; height:0; }
+  .an-scroll{ scrollbar-width:none; -ms-overflow-style:none; }
+  @keyframes anSlideIn{ from{ transform:translateX(100%);} to{ transform:translateX(0);} }
+</style>
+</helmet>
+<div style="display:flex; align-items:center; justify-content:center; min-height:100vh; padding:40px; background:radial-gradient(120% 120% at 15% 12%, #FFF4EC 0%, #F7F1FF 46%, #EEF0FB 100%); box-sizing:border-box; font-family:'Hanken Grotesk',sans-serif;">
+<x-import component="IOSDevice" from="./ios-frame.jsx" width="{{ devW }}" height="{{ devH }}" hint-size="402px,874px">
+  <div style="height:100%; display:flex; flex-direction:column; background:#FAFAFD; font-family:'Hanken Grotesk',sans-serif; position:relative; overflow:hidden;">
+
+    <div style="flex:1; position:relative; overflow:hidden;">
+
+      <!-- ============ TODAY / DAY VIEW ============ -->
+      <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex-shrink:0; padding:54px 18px 12px; background:#FAFAFD; border-bottom:1px solid #ECEDF6; z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="display:flex; align-items:center; gap:7px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:#FB7242;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="#FB7242"><path d="M12 2a5 5 0 0 0-5 5c0 1.9 1.1 3.5 2.7 4.4L8 22l4-2 4 2-1.7-10.6A5 5 0 0 0 17 7a5 5 0 0 0-5-5Z"></path></svg>
+                Tokyo</div>
+              <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:27px; color:#16172A; line-height:1.05; margin-top:3px;">Day 2 · Old Tokyo</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button style="width:38px; height:38px; border-radius:50%; border:1px solid #E3E5F0; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 1px 2px rgba(22,23,42,0.05);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+              <button style="width:38px; height:38px; border-radius:50%; border:1px solid #E3E5F0; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 1px 2px rgba(22,23,42,0.05);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:13px;">
+            <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#6C6E8E;"><span style="font-family:'Geist Mono',monospace; color:#353756;">Wed, Apr 13</span> · 3 stops</div>
+            <div style="display:inline-flex; background:#ECEDF6; border-radius:999px; padding:3px;">
+              <button onClick="{{ setLayoutA }}" style="{{ segA }}">Map</button>
+              <button onClick="{{ setLayoutB }}" style="{{ segB }}">Sheet</button>
+              <button onClick="{{ setLayoutC }}" style="{{ segC }}">List</button>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ layoutA }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div style="height:296px; flex-shrink:0; position:relative;">
+              <dc-import name="AnchorMap" pins="{{ dayPins }}" connect="{{ true }}" height="296px" hint-size="100%,296px"></dc-import>
+              <div style="position:absolute; left:14px; bottom:14px; display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border-radius:999px; padding:7px 13px 7px 9px; box-shadow:0 4px 14px rgba(22,23,42,0.14);">
+                <span style="width:18px; height:18px; border-radius:50%; background:#FB7242; display:inline-flex;"></span>
+                <span style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; font-weight:600; color:#353756;">2 anchors</span>
+                <span style="width:6px; height:6px; border-radius:50%; background:#D5D6E4;"></span>
+                <span style="width:14px; height:14px; border-radius:50%; background:#6C5CE7;"></span>
+                <span style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; font-weight:600; color:#353756;">1 pick</span>
+              </div>
+            </div>
+            <div class="an-scroll" style="flex:1; overflow-y:auto; padding-top:8px; padding-bottom:24px;">
+              <dc-import name="DayTimeline" stops="{{ dayStops }}" on-open="{{ openDetail }}" on-add="{{ addStop }}" on-skip="{{ skipStop }}" hint-size="100%,500px"></dc-import>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ layoutB }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1; position:relative; min-height:0;">
+            <div style="position:absolute; top:0; left:0; right:0; height:230px;">
+              <dc-import name="AnchorMap" pins="{{ dayPins }}" connect="{{ true }}" height="230px" hint-size="100%,230px"></dc-import>
+            </div>
+            <div class="an-scroll" style="position:absolute; inset:0; overflow-y:auto;">
+              <div style="height:186px; flex-shrink:0;"></div>
+              <div style="position:relative; background:#FAFAFD; border-radius:26px 26px 0 0; box-shadow:0 -8px 24px rgba(22,23,42,0.12); min-height:440px; padding-top:6px; padding-bottom:24px;">
+                <div style="width:42px; height:5px; border-radius:999px; background:#D5D6E4; margin:9px auto 4px;"></div>
+                <div style="display:flex; align-items:baseline; justify-content:space-between; padding:4px 20px 6px;">
+                  <span style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:17px; color:#16172A;">Your day</span>
+                  <span style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#9092AD;">3h 15m active · 4.2 km</span>
+                </div>
+                <dc-import name="DayTimeline" stops="{{ dayStops }}" on-open="{{ openDetail }}" on-add="{{ addStop }}" on-skip="{{ skipStop }}" hint-size="100%,500px"></dc-import>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ layoutC }}" hint-placeholder-val="{{ false }}">
+          <div class="an-scroll" style="flex:1; overflow-y:auto; padding:14px 18px 24px;">
+            <div style="border-radius:18px; overflow:hidden; height:132px; position:relative; box-shadow:0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07); margin-bottom:4px;">
+              <dc-import name="AnchorMap" pins="{{ dayPins }}" connect="{{ true }}" height="132px" hint-size="100%,132px"></dc-import>
+            </div>
+            <div style="margin:0 -18px;">
+              <dc-import name="DayTimeline" stops="{{ dayStops }}" on-open="{{ openDetail }}" on-add="{{ addStop }}" on-skip="{{ skipStop }}" hint-size="100%,500px"></dc-import>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ============ DISCOVER ============ -->
+      <sc-if value="{{ isDiscover }}" hint-placeholder-val="{{ false }}">
+      <div class="an-scroll" style="position:absolute; inset:0; overflow-y:auto;">
+        <div style="padding:54px 18px 8px;">
+          <div style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:#9092AD;">Discover · Tokyo</div>
+          <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:29px; color:#16172A; line-height:1.06; margin-top:4px; letter-spacing:-0.02em;">Picked for how you travel</div>
+        </div>
+        <div class="an-scroll" style="display:flex; gap:8px; overflow-x:auto; padding:10px 18px 14px;">
+          <sc-for list="{{ tasteChips }}" as="c" hint-placeholder-count="5">
+            <span style="flex-shrink:0; display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #E3E5F0; border-radius:999px; padding:8px 13px; font-family:'Hanken Grotesk',sans-serif; font-size:13px; font-weight:500; color:#4E5072; white-space:nowrap;"><span style="width:7px; height:7px; border-radius:50%; background:#FB7242;"></span>{{ c }}</span>
+          </sc-for>
+        </div>
+
+        <!-- featured top match -->
+        <div style="padding:0 18px 6px;">
+          <div onClick="{{ featured.open }}" style="border-radius:24px; overflow:hidden; background:#fff; box-shadow:0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10); cursor:pointer;">
+            <div style="height:152px; background:{{ featured.catGrad }}; position:relative; padding:14px;">
+              <span style="display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,0.9); border-radius:999px; padding:6px 11px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:700; color:#ED5A2A; white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#ED5A2A"><path d="M12 2l1.6 4.9a2 2 0 0 0 1.3 1.3L20 9.8l-4 3a2 2 0 0 0-.7 2.1L17 20l-4.4-2.8a2 2 0 0 0-2.2 0L6 20l1.7-5.1A2 2 0 0 0 7 12.8l-4-3 5.1-1.6A2 2 0 0 0 9.4 6.9Z"></path></svg>Top match · {{ featured.match }}%</span>
+              <div style="position:absolute; right:14px; bottom:14px; font-family:'Geist Mono',monospace; font-size:12px; color:rgba(255,255,255,0.92); background:rgba(0,0,0,0.16); padding:5px 9px; border-radius:8px;">{{ featured.area }}</div>
+            </div>
+            <div style="padding:15px 16px 16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:21px; color:#16172A; letter-spacing:-0.01em;">{{ featured.name }}</div>
+                <span style="display:inline-flex; align-items:center; gap:3px; flex-shrink:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:13px; color:#353756;">{{ featured.rating }}</span></span>
+              </div>
+              <div style="display:flex; gap:9px; margin-top:11px; background:#FFF1EA; border-radius:14px; padding:12px 13px;">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="#FB7242" style="flex-shrink:0; margin-top:1px;"><path d="M12 2l1.6 4.9a2 2 0 0 0 1.3 1.3L20 9.8l-4 3a2 2 0 0 0-.7 2.1L17 20l-4.4-2.8a2 2 0 0 0-2.2 0L6 20l1.7-5.1A2 2 0 0 0 7 12.8l-4-3 5.1-1.6A2 2 0 0 0 9.4 6.9Z"></path></svg>
+                <div style="font-family:'Hanken Grotesk',sans-serif; font-size:14px; color:#8a4a2c; line-height:1.45;">{{ featured.reason }}</div>
+              </div>
+              <button style="margin-top:13px; width:100%; border:none; background:linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%); color:#fff; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:15px; padding:13px; border-radius:14px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; box-shadow:0 6px 18px rgba(248,87,166,0.32);"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a5 5 0 0 0-5 5c0 1.9 1.1 3.5 2.7 4.4L8 22l4-2 4 2-1.7-10.6A5 5 0 0 0 17 7a5 5 0 0 0-5-5Z"></path></svg>Anchor it</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; font-weight:600; color:#6C6E8E; padding:14px 18px 8px;">More that fit you</div>
+        <div style="display:flex; flex-direction:column; gap:12px; padding:0 18px 24px;">
+          <sc-for list="{{ discoverList }}" as="p" hint-placeholder-count="3">
+            <div onClick="{{ p.open }}" style="display:flex; gap:13px; background:#fff; border-radius:20px; padding:12px; box-shadow:0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06); cursor:pointer;">
+              <div style="width:84px; height:84px; border-radius:15px; flex-shrink:0; background:{{ p.catGrad }}; display:flex; align-items:flex-end; padding:8px;">
+                <span style="font-family:'Hanken Grotesk',sans-serif; font-size:11px; font-weight:600; color:rgba(255,255,255,0.95); background:rgba(0,0,0,0.16); padding:3px 8px; border-radius:999px;">{{ p.catLabel }}</span>
+              </div>
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                  <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:17px; color:#16172A; line-height:1.1;">{{ p.name }}</div>
+                  <span style="display:inline-flex; align-items:center; gap:3px; flex-shrink:0;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:12px; color:#353756;">{{ p.rating }}</span></span>
+                </div>
+                <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#9092AD; margin-top:2px;">{{ p.area }}</div>
+                <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#5A48D6; line-height:1.4; margin-top:7px; font-style:italic;">{{ p.reason }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ NEAR ME NOW ============ -->
+      <sc-if value="{{ isNear }}" hint-placeholder-val="{{ false }}">
+      <div class="an-scroll" style="position:absolute; inset:0; overflow-y:auto;">
+        <div style="padding:54px 18px 6px;">
+          <div style="display:flex; align-items:center; gap:7px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:#6C5CE7;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"></path></svg>Near you now</div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:3px;">
+            <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:29px; color:#16172A; line-height:1.05; letter-spacing:-0.02em;">{{ nearArea }}</div>
+            <div style="font-family:'Geist Mono',monospace; font-size:13px; color:#6C6E8E;">{{ nearTime }}</div>
+          </div>
+        </div>
+        <div style="padding:12px 18px 4px;">
+          <div style="border-radius:18px; overflow:hidden; height:124px; position:relative; box-shadow:inset 0 0 0 1px #E7E8F1;">
+            <dc-import name="AnchorMap" pins="{{ nearPins }}" connect="{{ false }}" height="124px" hint-size="100%,124px"></dc-import>
+          </div>
+        </div>
+        <div class="an-scroll" style="display:flex; gap:8px; overflow-x:auto; padding:12px 18px;">
+          <button onClick="{{ setFilterAll }}" style="{{ filterAll }} flex-shrink:0;">All</button>
+          <button onClick="{{ setFilterOpen }}" style="{{ filterOpen }} flex-shrink:0;">Open now</button>
+          <button onClick="{{ setFilterFood }}" style="{{ filterFood }} flex-shrink:0;">Food</button>
+          <button onClick="{{ setFilterCoffee }}" style="{{ filterCoffee }} flex-shrink:0;">Coffee</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px; padding:0 18px 24px;">
+          <sc-for list="{{ nearList }}" as="n" hint-placeholder-count="5">
+            <div onClick="{{ n.open }}" style="display:flex; align-items:center; gap:13px; background:#fff; border-radius:18px; padding:12px 13px; box-shadow:0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05); cursor:pointer;">
+              <div style="width:50px; height:50px; border-radius:13px; flex-shrink:0; background:{{ n.catGrad }}; display:flex; align-items:center; justify-content:center; font-family:'Geist Mono',monospace; font-size:13px; font-weight:600; color:rgba(255,255,255,0.95);">{{ n.dist }}</div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:16px; color:#16172A; line-height:1.1;">{{ n.name }}</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                  <span style="display:inline-flex; align-items:center; gap:5px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; color:{{ n.statusInk }}; background:{{ n.statusSoft }}; padding:3px 8px; border-radius:999px; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:50%; background:{{ n.statusDot }};"></span>{{ n.statusText }}</span>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0;">
+                <span style="display:inline-flex; align-items:center; gap:4px; font-family:'Geist Mono',monospace; font-size:12px; color:#6C6E8E;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="1.6"></circle><path d="M11 7l-2 4 3 2 1 5M9 11l-3 1-1 4M13 13l3 1"></path></svg>{{ n.walk }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ ANCHORS ============ -->
+      <sc-if value="{{ isAnchors }}" hint-placeholder-val="{{ false }}">
+      <div class="an-scroll" style="position:absolute; inset:0; overflow-y:auto;">
+        <div style="padding:54px 18px 10px;">
+          <div style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:#9092AD;">Your anchors</div>
+          <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:29px; color:#16172A; line-height:1.05; margin-top:4px; letter-spacing:-0.02em;">Tokyo</div>
+          <div style="display:flex; gap:7px; margin-top:12px;">
+            <div style="flex:1; background:#fff; border-radius:16px; padding:12px 14px; box-shadow:0 1px 2px rgba(22,23,42,0.05);"><div style="font-family:'Geist Mono',monospace; font-weight:600; font-size:22px; color:#FB7242;">{{ anchorsCount }}</div><div style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; color:#9092AD; margin-top:1px;">anchors</div></div>
+            <div style="flex:1; background:#fff; border-radius:16px; padding:12px 14px; box-shadow:0 1px 2px rgba(22,23,42,0.05);"><div style="font-family:'Geist Mono',monospace; font-weight:600; font-size:22px; color:#6C5CE7;">{{ daysCount }}</div><div style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; color:#9092AD; margin-top:1px;">days</div></div>
+            <div style="flex:1; background:#fff; border-radius:16px; padding:12px 14px; box-shadow:0 1px 2px rgba(22,23,42,0.05);"><div style="font-family:'Geist Mono',monospace; font-weight:600; font-size:22px; color:#353756;">{{ savedCount }}</div><div style="font-family:'Hanken Grotesk',sans-serif; font-size:12px; color:#9092AD; margin-top:1px;">saved</div></div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px; padding:8px 18px 24px;">
+          <sc-for list="{{ anchorsList }}" as="a" hint-placeholder-count="6">
+            <div onClick="{{ a.open }}" style="background:#fff; border-radius:20px; overflow:hidden; box-shadow:0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06); cursor:pointer; display:flex;">
+              <div style="width:96px; flex-shrink:0; background:{{ a.catGrad }}; position:relative; display:flex; align-items:flex-end; padding:9px;">
+                <span style="font-family:'Hanken Grotesk',sans-serif; font-size:11px; font-weight:600; color:rgba(255,255,255,0.95); background:rgba(0,0,0,0.18); padding:3px 8px; border-radius:999px;">{{ a.catLabel }}</span>
+                <div style="position:absolute; top:9px; left:9px; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.92); display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#FB7242"><path d="M12 2a5 5 0 0 0-5 5c0 1.9 1.1 3.5 2.7 4.4L8 22l4-2 4 2-1.7-10.6A5 5 0 0 0 17 7a5 5 0 0 0-5-5Z"></path></svg></div>
+              </div>
+              <div style="flex:1; min-width:0; padding:12px 14px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                  <span style="font-family:'Geist Mono',monospace; font-size:11px; font-weight:500; color:#6C5CE7; background:#F1EEFF; padding:2px 8px; border-radius:999px;">{{ a.day }}</span>
+                  <span style="display:inline-flex; align-items:center; gap:3px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:12px; color:#353756;">{{ a.rating }}</span></span>
+                </div>
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:17px; color:#16172A; line-height:1.1; margin-top:7px;">{{ a.name }}</div>
+                <div style="font-family:'Hanken Grotesk',sans-serif; font-size:13px; color:#9092AD; margin-top:2px;">{{ a.area }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!--SCREENS-->
+
+    </div>
+
+    <!-- ============ PLACE DETAIL OVERLAY ============ -->
+    <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="an-scroll" style="position:absolute; inset:0; z-index:40; background:#FAFAFD; overflow-y:auto; animation:anSlideIn .28s cubic-bezier(0.22,1,0.36,1);">
+      <!-- hero -->
+      <div style="height:280px; background:{{ detail.catGrad }}; position:relative;">
+        <div style="position:absolute; top:54px; left:16px; right:16px; display:flex; align-items:center; justify-content:space-between;">
+          <button onClick="{{ closeDetail }}" style="width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.92); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(22,23,42,0.16);"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#232540" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+          <button style="width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.92); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(22,23,42,0.16);"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#232540" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"></path></svg></button>
+        </div>
+        <div style="position:absolute; left:18px; bottom:16px;">
+          <span style="display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,0.92); border-radius:999px; padding:5px 11px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:600; color:#353756;">{{ detail.catLabel }}</span>
+        </div>
+      </div>
+
+      <div style="padding:16px 18px 32px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+          <div style="min-width:0;">
+            <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:26px; color:#16172A; line-height:1.08; letter-spacing:-0.02em;">{{ detail.name }}</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:6px; font-family:'Hanken Grotesk',sans-serif; font-size:14px; color:#6C6E8E;">
+              <span>{{ detail.area }}</span>
+              <span style="display:inline-flex; align-items:center; gap:3px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#ECA800"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"></path></svg><span style="font-family:'Geist Mono',monospace; font-size:13px; color:#353756;">{{ detail.rating }}</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- coords + hours -->
+        <div style="display:flex; gap:9px; margin-top:14px;">
+          <div style="flex:1; background:#fff; border-radius:14px; padding:11px 13px; box-shadow:0 1px 2px rgba(22,23,42,0.05);">
+            <div style="font-family:'Hanken Grotesk',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#9092AD;">Hours</div>
+            <div style="font-family:'Geist Mono',monospace; font-size:13px; color:#353756; margin-top:4px;">{{ detail.hours }}</div>
+          </div>
+          <div style="flex:1; background:#fff; border-radius:14px; padding:11px 13px; box-shadow:0 1px 2px rgba(22,23,42,0.05);">
+            <div style="font-family:'Hanken Grotesk',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#9092AD;">Coordinates</div>
+            <div style="font-family:'Geist Mono',monospace; font-size:13px; color:#353756; margin-top:4px;">{{ detail.coords }}</div>
+          </div>
+        </div>
+
+        <!-- why it's an anchor -->
+        <div style="margin-top:14px; background:#FFF1EA; border-radius:18px; padding:15px 16px;">
+          <div style="display:flex; align-items:center; gap:7px; font-family:'Hanken Grotesk',sans-serif; font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#ED5A2A;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#ED5A2A"><path d="M12 2a5 5 0 0 0-5 5c0 1.9 1.1 3.5 2.7 4.4L8 22l4-2 4 2-1.7-10.6A5 5 0 0 0 17 7a5 5 0 0 0-5-5Z"></path></svg>
+            <sc-if value="{{ detail.isAnchorPlace }}" hint-placeholder-val="{{ true }}">Why it's an anchor</sc-if>
+            <sc-if value="{{ detail.notAnchorPlace }}" hint-placeholder-val="{{ false }}">Why it fits you</sc-if>
+          </div>
+          <div style="font-family:'Hanken Grotesk',sans-serif; font-size:15px; color:#7a4a30; line-height:1.5; margin-top:8px;">{{ detail.reasonText }}</div>
+        </div>
+
+        <!-- mini map -->
+        <div style="margin-top:14px; border-radius:18px; overflow:hidden; height:150px; box-shadow:inset 0 0 0 1px #E7E8F1;">
+          <dc-import name="AnchorMap" pins="{{ detail.detailPins }}" connect="{{ false }}" height="150px" hint-size="100%,150px"></dc-import>
+        </div>
+
+        <!-- pairs well with -->
+        <div style="font-family:'Hanken Grotesk',sans-serif; font-size:15px; font-weight:700; color:#16172A; margin:20px 0 10px; font-family:'Schibsted Grotesk',sans-serif;">Fits nearby</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <sc-for list="{{ detail.pairs }}" as="p" hint-placeholder-count="2">
+            <div onClick="{{ p.open }}" style="display:flex; align-items:center; gap:12px; background:#fff; border-radius:16px; padding:10px 12px; box-shadow:0 1px 2px rgba(22,23,42,0.05); cursor:pointer;">
+              <div style="width:46px; height:46px; border-radius:12px; flex-shrink:0; background:{{ p.catGrad }};"></div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-family:'Schibsted Grotesk',sans-serif; font-weight:600; font-size:15px; color:#16172A; line-height:1.1;">{{ p.name }}</div>
+                <div style="font-family:'Hanken Grotesk',sans-serif; font-size:12.5px; color:#9092AD; margin-top:2px;">{{ p.catLabel }} · {{ p.area }}</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C0C2D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- sticky action bar -->
+      <div style="position:sticky; bottom:0; display:flex; gap:10px; padding:12px 18px 28px; background:linear-gradient(180deg, rgba(250,250,253,0) 0%, #FAFAFD 28%);">
+        <button style="flex:1; border:none; background:#6C5CE7; color:#fff; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:15px; padding:14px; border-radius:15px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; box-shadow:0 6px 18px rgba(108,92,231,0.30);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Anchored</button>
+        <button style="border:1.5px solid #E3E5F0; background:#fff; color:#4E5072; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:15px; padding:14px 18px; border-radius:15px; cursor:pointer; display:inline-flex; align-items:center; gap:7px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="m21 3-9 9"></path><path d="M21 3v6h-6"></path><path d="M3 12a9 9 0 0 0 9 9"></path></svg>Directions</button>
+      </div>
+    </div>
+    </sc-if>
+
+
+    <!-- ============ BOTTOM TAB BAR ============ -->
+    <div style="flex-shrink:0; display:flex; padding:8px 10px 24px; background:rgba(255,255,255,0.86); backdrop-filter:blur(18px); border-top:1px solid #ECEDF6; z-index:20;">
+      <button onClick="{{ tabToday }}" style="{{ navTodayStyle }}">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg>
+        <span style="font-size:11px; font-weight:600; font-family:'Hanken Grotesk',sans-serif;">Today</span>
+      </button>
+      <button onClick="{{ tabDiscover }}" style="{{ navDiscoverStyle }}">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="m15.5 8.5-2.6 4-4 2.6 2.6-4z"></path></svg>
+        <span style="font-size:11px; font-weight:600; font-family:'Hanken Grotesk',sans-serif;">Discover</span>
+      </button>
+      <button onClick="{{ tabNear }}" style="{{ navNearStyle }}">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"></path></svg>
+        <span style="font-size:11px; font-weight:600; font-family:'Hanken Grotesk',sans-serif;">Near</span>
+      </button>
+      <button onClick="{{ tabAnchors }}" style="{{ navAnchorsStyle }}">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.4"></circle><path d="M12 7.4V21M6 13H4a8 8 0 0 0 16 0h-2M8.5 18.5 12 21l3.5-2.5"></path></svg>
+        <span style="font-size:11px; font-weight:600; font-family:'Hanken Grotesk',sans-serif;">Anchors</span>
+      </button>
+    </div>
+
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = { tab: 'today', dayLayout: 'A', detail: null, filter: 'all', added: {} };
+
+  cat(key) {
+    const C = {
+      art:     { label: 'Art',          grad: 'linear-gradient(135deg,#A98BFF,#F857A6)' },
+      food:    { label: 'Food',         grad: 'linear-gradient(135deg,#FF9E5E,#F857A6)' },
+      culture: { label: 'Culture',      grad: 'linear-gradient(135deg,#FFB36B,#FB7242)' },
+      views:   { label: 'Views',        grad: 'linear-gradient(135deg,#8B72FB,#FF8FC0)' },
+      nature:  { label: 'Nature',       grad: 'linear-gradient(135deg,#5BD6B0,#8B72FB)' },
+      nbhd:    { label: 'Neighborhood', grad: 'linear-gradient(135deg,#FF8FC0,#A98BFF)' },
+      coffee:  { label: 'Coffee',       grad: 'linear-gradient(135deg,#FFC59E,#FB7242)' },
+      stay:    { label: 'Stay',         grad: 'linear-gradient(135deg,#9AA0FF,#6C5CE7)' },
+    };
+    return C[key] || C.nbhd;
+  }
+
+  places() {
+    return {
+      senso:   { name: 'Sensō-ji Temple', cat: 'culture', area: 'Asakusa', rating: 4.7, mins: 60, coords: '35.7148, 139.7967', hours: '6:00 – 17:00', day: 'Day 2', note: 'Enter through Nakamise street — grab a melonpan and ningyo-yaki on the walk in.' },
+      blue:    { name: 'Blue Bottle Kiyosumi', cat: 'coffee', area: 'Kiyosumi', rating: 4.4, mins: 30, coords: '35.6816, 139.8005', hours: '8:00 – 19:00', reason: 'You start mornings slow — a quiet pour-over before the day\u2019s first anchor is exactly your pace.' },
+      tsukiji: { name: 'Tsukiji Outer Market', cat: 'food', area: 'Tsukiji', rating: 4.5, mins: 75, coords: '35.6654, 139.7707', hours: '5:00 – 14:00', day: 'Day 2', note: 'Tamagoyaki on a stick, then uni at the counter. Many stalls are cash-only.' },
+      teamlab: { name: 'teamLab Planets', cat: 'art', area: 'Toyosu', rating: 4.8, mins: 90, coords: '35.6297, 139.7756', hours: '10:00 – 22:00', day: 'Day 3', note: 'Booked 10:00 entry — go early, before the midday crowds build.' },
+      sky:     { name: 'Shibuya Sky', cat: 'views', area: 'Shibuya', rating: 4.9, mins: 60, coords: '35.6580, 139.7016', hours: '10:00 – 22:30', day: 'Day 1', note: 'You booked the sunset slot — arrive 30 min early for the open-air rooftop edge.' },
+      ichiran: { name: 'Ichiran Shibuya', cat: 'food', area: 'Shibuya', rating: 4.6, mins: 45, coords: '35.6618, 139.7041', hours: 'Open 24 hours', day: 'Day 1', note: 'Solo ramen booths — tick the order sheet, no small talk required.' },
+      shimo:   { name: 'Shimokitazawa', cat: 'nbhd', area: 'Setagaya', rating: 4.6, mins: 120, coords: '35.6613, 139.6680', hours: 'Shops ~11:00 – 20:00', day: 'Day 4', note: 'Vintage racks and six-seat coffee bars. Easy to lose a whole afternoon here.' },
+      nezu:    { name: 'Nezu Museum', cat: 'art', area: 'Aoyama', rating: 4.5, mins: 60, coords: '35.6627, 139.7176', hours: '10:00 – 17:00', reason: 'You linger in hushed, low-lit galleries. Nezu\u2019s garden empties out by late afternoon — go then.' },
+      yoyogi:  { name: 'Yoyogi Park', cat: 'nature', area: 'Harajuku', rating: 4.6, mins: 45, coords: '35.6720, 139.6949', hours: 'Always open', reason: 'You build a slow hour into every afternoon. This is where Tokyo actually exhales.' },
+      omoide:  { name: 'Omoide Yokocho', cat: 'food', area: 'Shinjuku', rating: 4.4, mins: 60, coords: '35.6938, 139.6995', hours: '17:00 – late', reason: 'You linger over counter seats — this whole alley is six-stool bars, charcoal smoke and offcuts.' },
+      about:   { name: 'About Life Coffee', cat: 'coffee', area: 'Dogenzaka', rating: 4.5, mins: 20, coords: '35.6585, 139.6979', hours: '9:00 – 19:00', note: 'Stand-up window espresso — a Shibuya morning institution.' },
+      gyukatsu:{ name: 'Gyukatsu Motomura', cat: 'food', area: 'Shibuya', rating: 4.5, mins: 40, coords: '35.6595, 139.6982', hours: '11:00 – 22:00', note: 'Grill your own beef cutlet on a tabletop stone. Lunch queues move fast.' },
+      nonbei:  { name: 'Nonbei Yokocho', cat: 'nbhd', area: 'Shibuya', rating: 4.6, mins: 60, coords: '35.6597, 139.7016', hours: '18:00 – late', note: 'Postage-stamp bars tucked under the train tracks. Pick one with an open stool.' },
+      fuglen:  { name: 'Fuglen Tokyo', cat: 'coffee', area: 'Tomigaya', rating: 4.5, mins: 30, coords: '35.6678, 139.6905', hours: '9:00 – 22:00', note: 'Norwegian roasts by day, cocktails by night.' },
+    };
+  }
+
+  build(id, extra) {
+    const p = this.places()[id];
+    const c = this.cat(p.cat);
+    return Object.assign({ id, catLabel: c.label, catGrad: c.grad }, p, extra || {});
+  }
+
+  renderVals() {
+    const tab = this.state.tab;
+    const L = this.state.dayLayout;
+    const segBase = "border:none; background:transparent; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:13px; color:#6C6E8E; padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .15s;";
+    const segOn = "border:none; background:#fff; font-family:'Hanken Grotesk',sans-serif; font-weight:600; font-size:13px; color:#16172A; padding:6px 14px; border-radius:999px; cursor:pointer; box-shadow:0 1px 3px rgba(22,23,42,0.14);";
+
+    // Day 2 itinerary
+    const dayStops = [
+      this.build('senso',   { kind: 'anchor',  num: 1, time: '09:30', travel: '12 min walk · along the Sumida' }),
+      this.build('blue',    { kind: 'suggest', num: 2, time: '11:30', travel: '8 min walk to the market', added: !!this.state.added.blue }),
+      this.build('tsukiji', { kind: 'anchor',  num: 3, time: '13:00' }),
+    ];
+    dayStops.forEach((s, i) => { s.hasLine = i < dayStops.length - 1; });
+    const dayPins = [
+      { id: 'senso',   x: 76, y: 22, num: 1, kind: 'anchor' },
+      { id: 'blue',    x: 64, y: 45, num: 2, kind: 'suggest' },
+      { id: 'tsukiji', x: 55, y: 64, num: 3, kind: 'anchor' },
+      { id: 'you',     x: 40, y: 70, kind: 'you' },
+    ];
+
+    // Discover
+    const tasteChips = ['Counter dining', 'Offcuts & izakaya', 'Quiet mornings', 'Specialty coffee', 'Vintage', 'Slow afternoons'];
+    const featured = this.build('omoide', { open: () => this.openDetail('omoide'), match: 96 });
+    const discoverList = ['blue', 'nezu', 'yoyogi'].map((id) => this.build(id, { open: () => this.openDetail(id) }));
+
+    // Near me
+    const nearRaw = [
+      { id: 'ichiran',  dist: '220 m', walk: '3 min', kind: 'anchor',  status: 'open',   statusText: 'Open · 24 hours' },
+      { id: 'about',    dist: '300 m', walk: '4 min', kind: 'suggest', status: 'soon',   statusText: 'Closes 7:00 PM' },
+      { id: 'sky',      dist: '400 m', walk: '6 min', kind: 'anchor',  status: 'open',   statusText: 'Open · closes 10:30 PM' },
+      { id: 'gyukatsu', dist: '480 m', walk: '6 min', kind: 'suggest', status: 'open',   statusText: 'Open · closes 10:00 PM' },
+      { id: 'nonbei',   dist: '290 m', walk: '4 min', kind: 'suggest', status: 'open',   statusText: 'Open now' },
+      { id: 'fuglen',   dist: '650 m', walk: '9 min', kind: 'suggest', status: 'closed', statusText: 'Closed · opens 9:00 AM' },
+    ];
+    const f = this.state.filter;
+    const nearList = nearRaw.filter((n) => {
+      if (f === 'open') return n.status !== 'closed';
+      if (f === 'food') return ['food'].includes(this.places()[n.id].cat);
+      if (f === 'coffee') return this.places()[n.id].cat === 'coffee';
+      return true;
+    }).map((n) => {
+      const st = n.status === 'open' ? { dot: '#14A06E', ink: '#0E865B', soft: '#D6F5E6' }
+               : n.status === 'soon' ? { dot: '#ECA800', ink: '#C98A00', soft: '#FCEFCF' }
+               : { dot: '#9092AD', ink: '#6C6E8E', soft: '#ECEDF6' };
+      return this.build(n.id, Object.assign({ open: () => this.openDetail(n.id), statusDot: st.dot, statusInk: st.ink, statusSoft: st.soft }, n));
+    });
+    const nearPins = [
+      { id: 'you',      x: 46, y: 56, kind: 'you' },
+      { id: 'ichiran',  x: 30, y: 64, num: 1, kind: 'anchor' },
+      { id: 'sky',      x: 38, y: 40, num: 2, kind: 'anchor' },
+      { id: 'about',    x: 60, y: 50, num: 3, kind: 'suggest' },
+      { id: 'nonbei',   x: 56, y: 70, num: 4, kind: 'suggest' },
+    ];
+    const filterStyle = (key) => f === key ? segOn : segBase;
+
+    // Anchors
+    const anchorsList = ['senso', 'ichiran', 'sky', 'tsukiji', 'teamlab', 'shimo'].map((id) => this.build(id, { open: () => this.openDetail(id) }));
+
+    // Detail
+    let detailVM = null;
+    if (this.state.detail) {
+      const d = this.build(this.state.detail);
+      const isAnchorPlace = ['senso', 'ichiran', 'sky', 'tsukiji', 'teamlab', 'shimo'].includes(this.state.detail);
+      const pairIds = { senso: ['blue', 'omoide'], tsukiji: ['blue', 'gyukatsu'], omoide: ['nonbei', 'fuglen'], blue: ['nezu', 'tsukiji'], nezu: ['blue', 'yoyogi'], yoyogi: ['about', 'shimo'], sky: ['ichiran', 'nonbei'], ichiran: ['nonbei', 'sky'], teamlab: ['blue', 'tsukiji'], shimo: ['fuglen', 'about'], about: ['gyukatsu', 'nonbei'], gyukatsu: ['nonbei', 'ichiran'], nonbei: ['gyukatsu', 'sky'], fuglen: ['shimo', 'about'] }[this.state.detail] || ['blue', 'nonbei'];
+      detailVM = Object.assign({}, d, {
+        isAnchorPlace,
+        notAnchorPlace: !isAnchorPlace,
+        reasonText: d.reason || d.note,
+        detailPins: [{ id: d.id, x: 52, y: 46, num: isAnchorPlace ? '' : '', kind: isAnchorPlace ? 'anchor' : 'suggest', big: true, label: d.area }],
+        pairs: pairIds.map((pid) => this.build(pid, { open: () => this.openDetail(pid) })),
+      });
+    }
+
+    return {
+      devW: 402, devH: 874,
+      isToday: tab === 'today', isDiscover: tab === 'discover', isNear: tab === 'near', isAnchors: tab === 'anchors',
+      layoutA: L === 'A', layoutB: L === 'B', layoutC: L === 'C',
+      segA: L === 'A' ? segOn : segBase, segB: L === 'B' ? segOn : segBase, segC: L === 'C' ? segOn : segBase,
+      setLayoutA: () => this.setState({ dayLayout: 'A' }), setLayoutB: () => this.setState({ dayLayout: 'B' }), setLayoutC: () => this.setState({ dayLayout: 'C' }),
+      dayStops, dayPins, tasteChips, featured, discoverList,
+      nearList, nearPins, nearArea: 'Shibuya', nearTime: '6:24 PM',
+      filterAll: filterStyle('all'), filterFood: filterStyle('food'), filterCoffee: filterStyle('coffee'), filterOpen: filterStyle('open'),
+      setFilterAll: () => this.setState({ filter: 'all' }), setFilterFood: () => this.setState({ filter: 'food' }), setFilterCoffee: () => this.setState({ filter: 'coffee' }), setFilterOpen: () => this.setState({ filter: 'open' }),
+      anchorsList, anchorsCount: 6, daysCount: 4, savedCount: 12,
+      detailOpen: !!this.state.detail, detail: detailVM,
+      openDetail: (id) => this.openDetail(id), closeDetail: () => this.setState({ detail: null }),
+      addStop: (id) => this.setState((s) => ({ added: Object.assign({}, s.added, { [id]: true }) })),
+      skipStop: (id) => this.setState((s) => ({ added: Object.assign({}, s.added, { [id]: false }) })),
+      tabToday: () => this.setState({ tab: 'today' }), tabDiscover: () => this.setState({ tab: 'discover' }), tabNear: () => this.setState({ tab: 'near' }), tabAnchors: () => this.setState({ tab: 'anchors' }),
+      navTodayStyle: this.navStyle('today'), navDiscoverStyle: this.navStyle('discover'), navNearStyle: this.navStyle('near'), navAnchorsStyle: this.navStyle('anchors'),
+    };
+  }
+
+  openDetail(id) { this.setState({ detail: id }); }
+
+  navStyle(key) {
+    const on = this.state.tab === key;
+    return `flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0; border:none; background:transparent; cursor:pointer; color:${on ? '#6C5CE7' : '#9092AD'};`;
+  }
+}
+</script>
+</body>
+</html>
