@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anchor · Tokyo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="vendor/react.min.js"></script>
+<script src="vendor/react-dom.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;height:100dvh}
+body{font-family:'Hanken Grotesk',sans-serif;background:#DDE0EB;display:flex;justify-content:center}
+#root{width:100%;max-width:430px;min-height:100dvh;background:#FAFAFD;position:relative;display:flex;flex-direction:column;overflow:hidden}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none;-ms-overflow-style:none}
+button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
+input,textarea{font-family:'Hanken Grotesk',sans-serif}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){@keyframes slideIn{from{transform:none}to{transform:none}}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+
+/* ── DATA ── */
+const CATS = {
+  art:    {label:'Art',          grad:'linear-gradient(135deg,#A98BFF,#F857A6)'},
+  food:   {label:'Food',         grad:'linear-gradient(135deg,#FF9E5E,#F857A6)'},
+  culture:{label:'Culture',      grad:'linear-gradient(135deg,#FFB36B,#FB7242)'},
+  views:  {label:'Views',        grad:'linear-gradient(135deg,#8B72FB,#FF8FC0)'},
+  nature: {label:'Nature',       grad:'linear-gradient(135deg,#5BD6B0,#8B72FB)'},
+  nbhd:   {label:'Neighborhood', grad:'linear-gradient(135deg,#FF8FC0,#A98BFF)'},
+  coffee: {label:'Coffee',       grad:'linear-gradient(135deg,#FFC59E,#FB7242)'},
+  stay:   {label:'Stay',         grad:'linear-gradient(135deg,#9AA0FF,#6C5CE7)'},
+};
+
+const PLACES = {
+  senso:{name:'Sensō-ji Temple',cat:'culture',area:'Asakusa',rating:4.7,tabelogRating:null,mins:60,
+    coords:'35.7148, 139.7967',hours:'6:00 – 17:00',openNow:'open',budget:'Free',station:'Asakusa (5 min)',
+    note:'Enter through Nakamise street — grab a melonpan and ningyo-yaki on the walk in.',
+    digest:'Tokyo\'s most visited temple feels genuinely ancient in the early morning. Locals visit for New Year\'s; the Nakamise arcade is tourist-heavy but the inner grounds stay serene.'},
+  blue:{name:'Blue Bottle Kiyosumi',cat:'coffee',area:'Kiyosumi',rating:4.4,tabelogRating:3.5,mins:30,
+    coords:'35.6816, 139.8005',hours:'8:00 – 19:00',openNow:'open',budget:'¥',station:'Kiyosumi-Shirakawa (4 min)',
+    reason:'You start mornings slow — a quiet pour-over before the day\'s first anchor is exactly your pace.',
+    digest:'The Kiyosumi flagship is quieter than the Shibuya branch. Long communal tables, minimal soundtrack, staff who know the menu cold. Order the single-origin pour-over.'},
+  tsukiji:{name:'Tsukiji Outer Market',cat:'food',area:'Tsukiji',rating:4.5,tabelogRating:null,mins:75,
+    coords:'35.6654, 139.7707',hours:'5:00 – 14:00',openNow:'soon',budget:'¥¥',station:'Tsukiji (3 min)',
+    note:'Tamagoyaki on a stick, then uni at the counter. Many stalls are cash-only.',
+    digest:'The outer market survived the inner market\'s move to Toyosu. Tamagoyaki shops along the main lane are the draw; tuna stalls open from 5 AM for the true early crowd.'},
+  teamlab:{name:'teamLab Planets',cat:'art',area:'Toyosu',rating:4.8,tabelogRating:null,mins:90,
+    coords:'35.6297, 139.7756',hours:'10:00 – 22:00',openNow:'open',budget:'¥¥¥',station:'Shin-Toyosu (3 min)',
+    note:'Booked 10:00 entry — go early, before the midday crowds build.',
+    digest:'Four rooms of immersive digital art. The water room requires bare feet and gets crowded by noon. Printed-ticket holders move through faster than app-ticket holders.'},
+  sky:{name:'Shibuya Sky',cat:'views',area:'Shibuya',rating:4.9,tabelogRating:null,mins:60,
+    coords:'35.6580, 139.7016',hours:'10:00 – 22:30',openNow:'open',budget:'¥¥',station:'Shibuya (3 min)',
+    note:'You booked the sunset slot — arrive 30 min early for the open-air rooftop edge.',
+    digest:'Open-air deck on top of Scramble Square at 229m. No glass barrier on the roof level — just wire mesh. Sunset slots sell out weeks ahead.'},
+  ichiran:{name:'Ichiran Shibuya',cat:'food',area:'Shibuya',rating:4.6,tabelogRating:3.8,mins:45,
+    coords:'35.6618, 139.7041',hours:'Open 24 hours',openNow:'open',budget:'¥',station:'Shibuya (5 min)',
+    note:'Solo ramen booths — tick the order sheet, no small talk required.',
+    digest:'The original solo-booth ramen experience. Each seat is a private compartment with a bamboo blind; you communicate via paper order form. Tonkotsu broth is consistent; the experience is the point.'},
+  shimo:{name:'Shimokitazawa',cat:'nbhd',area:'Setagaya',rating:4.6,tabelogRating:null,mins:120,
+    coords:'35.6613, 139.6680',hours:'Shops ~11:00 – 20:00',openNow:'open',budget:'¥',station:'Shimokitazawa (0 min)',
+    note:'Vintage racks and six-seat coffee bars. Easy to lose a whole afternoon here.',
+    digest:'Tokyo\'s indie arts neighborhood. Vintage stores stack three floors. Live music venues are in basements. Best explored without a plan — follow the narrowest lane.'},
+  nezu:{name:'Nezu Museum',cat:'art',area:'Aoyama',rating:4.5,tabelogRating:null,mins:60,
+    coords:'35.6627, 139.7176',hours:'10:00 – 17:00',openNow:'closed',budget:'¥¥',station:'Omotesando (8 min)',
+    reason:'You linger in hushed, low-lit galleries. Nezu\'s garden empties out by late afternoon — go then.',
+    digest:'A quietly exceptional private collection — Buddhist sculpture, lacquerware, Chinese bronzes — in Kengo Kuma\'s bamboo-lattice building. The café terrace by the garden is underrated.'},
+  yoyogi:{name:'Yoyogi Park',cat:'nature',area:'Harajuku',rating:4.6,tabelogRating:null,mins:45,
+    coords:'35.6720, 139.6949',hours:'Always open',openNow:'open',budget:'Free',station:'Harajuku (1 min)',
+    reason:'You build a slow hour into every afternoon. This is where Tokyo actually exhales.',
+    digest:'The park Tokyoites actually use — picnics, musicians, a dog run, scattered shade groves. Connects directly to Meiji Shrine. Sunday afternoons bring cosplay gatherings near the main entrance.'},
+  omoide:{name:'Omoide Yokocho',cat:'food',area:'Shinjuku',rating:4.4,tabelogRating:3.6,mins:60,
+    coords:'35.6938, 139.6995',hours:'17:00 – late',openNow:'soon',budget:'¥¥',station:'Shinjuku (2 min)',
+    reason:'You linger over counter seats — this whole alley is six-stool bars, charcoal smoke and offcuts.',
+    digest:'Memory Lane: a survival-era alley of tiny yakitori stalls directly behind Shinjuku station\'s west exit. Each bar seats six at most. Chicken hearts, livers, skin; cheap beer is the mandate.'},
+  about:{name:'About Life Coffee',cat:'coffee',area:'Dogenzaka',rating:4.5,tabelogRating:3.4,mins:20,
+    coords:'35.6585, 139.6979',hours:'9:00 – 19:00',openNow:'soon',budget:'¥',station:'Shibuya (5 min)',
+    note:'Stand-up window espresso — a Shibuya morning institution.',
+    digest:'A window-hatch espresso counter in a narrow Dogenzaka lane. You order standing; a few stools available. Known for rotating single-origin espresso and a generous extraction.'},
+  gyukatsu:{name:'Gyukatsu Motomura',cat:'food',area:'Shibuya',rating:4.5,tabelogRating:3.7,mins:40,
+    coords:'35.6595, 139.6982',hours:'11:00 – 22:00',openNow:'open',budget:'¥¥',station:'Shibuya (4 min)',
+    note:'Grill your own beef cutlet on a tabletop stone. Lunch queues move fast.',
+    digest:'The Motomura chain runs the beef-katsu grilling concept cleanly: medium-rare slices arrive with a hot stone; you finish cooking at the table. The lunch set is the move.'},
+  nonbei:{name:'Nonbei Yokocho',cat:'nbhd',area:'Shibuya',rating:4.6,tabelogRating:null,mins:60,
+    coords:'35.6597, 139.7016',hours:'18:00 – late',openNow:'closed',budget:'¥¥',station:'Shibuya (6 min)',
+    note:'Postage-stamp bars tucked under the train tracks. Pick one with an open stool.',
+    digest:'A shorter, quieter alley than Memory Lane — more cocktail bars, slightly younger crowd. Bars here are genuinely tiny. Best after 8 PM when they fill in.'},
+  fuglen:{name:'Fuglen Tokyo',cat:'coffee',area:'Tomigaya',rating:4.5,tabelogRating:3.5,mins:30,
+    coords:'35.6678, 139.6905',hours:'9:00 – 22:00',openNow:'open',budget:'¥',station:'Yoyogi-Koen (5 min)',
+    note:'Norwegian roasts by day, cocktails by night.',
+    digest:'The Tokyo outpost of the Oslo original. Mid-century chairs, long opening hours. The flat white is excellent; the cocktail menu after 5 PM draws a neighborhood crowd who treat it as a local bar.'},
+};
+
+const ANCHOR_IDS = ['senso','ichiran','sky','tsukiji','teamlab','shimo'];
+
+const PAIRS = {
+  senso:['blue','omoide'],tsukiji:['blue','gyukatsu'],omoide:['nonbei','fuglen'],
+  blue:['nezu','tsukiji'],nezu:['blue','yoyogi'],yoyogi:['about','shimo'],
+  sky:['ichiran','nonbei'],ichiran:['nonbei','sky'],teamlab:['blue','tsukiji'],
+  shimo:['fuglen','about'],about:['gyukatsu','nonbei'],gyukatsu:['nonbei','ichiran'],
+  nonbei:['gyukatsu','sky'],fuglen:['shimo','about'],
+};
+
+const ANCHORS_DATA = [
+  {id:'park-hyatt',name:'Park Hyatt Tokyo',area:'Shinjuku',dates:'Jun 14–16',nights:2,
+    categories:[
+      {id:'coffee',name:'Coffee',placeIds:['about','fuglen','blue']},
+      {id:'food',name:'Food & Drink',placeIds:['ichiran','gyukatsu','omoide','nonbei']},
+      {id:'sights',name:'Sights',placeIds:['sky','shimo','yoyogi']},
+    ]},
+  {id:'cerulean',name:'Cerulean Tower Tokyu',area:'Shibuya',dates:'Jun 16–18',nights:2,
+    categories:[
+      {id:'culture',name:'Culture & Art',placeIds:['senso','teamlab','nezu']},
+      {id:'food',name:'Food & Markets',placeIds:['tsukiji','gyukatsu','omoide']},
+      {id:'coffee',name:'Coffee',placeIds:['blue','about']},
+    ]},
+];
+
+const TRIP = {
+  name:'Tokyo',year:'June 2026',
+  flights:[
+    {dir:'arrive',label:'JL061  SFO → NRT',time:'Sat Jun 14 · 5:20 PM'},
+    {dir:'depart',label:'JL060  NRT → SFO',time:'Wed Jun 18 · 11:30 AM'},
+  ],
+  days:[
+    {date:'Sat Jun 14',label:'Day 1',hotel:'Park Hyatt',placeIds:['sky','ichiran']},
+    {date:'Sun Jun 15',label:'Day 2',hotel:'Park Hyatt',placeIds:['senso','blue','tsukiji'],active:true},
+    {date:'Mon Jun 16',label:'Day 3',hotel:'Cerulean',placeIds:['teamlab','nonbei']},
+    {date:'Tue Jun 17',label:'Day 4',hotel:'Cerulean',placeIds:['shimo','fuglen','nezu']},
+  ],
+};
+
+function bp(id) {
+  const p=PLACES[id], c=CATS[p.cat]||CATS.nbhd;
+  return {id,catLabel:c.label,catGrad:c.grad,...p};
+}
+
+function sc(openNow) {
+  if(openNow==='open')  return {dot:'#14A06E',ink:'#0E865B',soft:'#D6F5E6',label:'Open now'};
+  if(openNow==='soon')  return {dot:'#ECA800',ink:'#C98A00',soft:'#FCEFCF',label:'Closing soon'};
+  return                       {dot:'#9092AD',ink:'#6C6E8E',soft:'#ECEDF6',label:'Closed'};
+}
+
+/* ── ICONS ── */
+const AnchorIco = ({size=14,color='#FB7242'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M12 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM12 8v14M5 12H2a10 10 0 0 0 20 0h-3"/>
+  </svg>
+);
+const StarIco = ({size=13,color='#ECA800'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"/>
+  </svg>
+);
+const SparkleIco = ({size=17,color='#fff'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M12 2l1.6 4.9a2 2 0 0 0 1.3 1.3L20 9.8l-4 3a2 2 0 0 0-.7 2.1L17 20l-4.4-2.8a2 2 0 0 0-2.2 0L6 20l1.7-5.1A2 2 0 0 0 7 12.8l-4-3 5.1-1.6A2 2 0 0 0 9.4 6.9Z"/>
+  </svg>
+);
+const WalkIco = ({size=12,color='#B6B8CC'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="13" cy="4" r="1.6" fill={color} stroke="none"/>
+    <path d="M11 7l-2 4 3 2 1 5M9 11l-3 1-1 4M13 13l3 1"/>
+  </svg>
+);
+const ChevRight = ({size=18,color='#C0C2D4'}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+);
+const BackBtn = ({onClick}) => (
+  <button onClick={onClick} style={{width:38,height:38,borderRadius:'50%',border:'none',background:'#F1EEFF',
+    display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#232540" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 18-6-6 6-6"/>
+    </svg>
+  </button>
+);
+
+/* ── ATOMS ── */
+function StatusPill({openNow,small}) {
+  const s=sc(openNow);
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:"'Hanken Grotesk',sans-serif",
+      fontWeight:600,fontSize:small?11:12,color:s.ink,background:s.soft,
+      padding:small?'2px 7px':'3px 9px',borderRadius:999,whiteSpace:'nowrap'}}>
+      <span style={{width:6,height:6,borderRadius:'50%',background:s.dot,flexShrink:0}}/>
+      {s.label}
+    </span>
+  );
+}
+
+function Ratings({rating,tabelogRating,size='sm'}) {
+  const fs=size==='sm'?12:13, st=size==='sm'?13:14;
+  return (
+    <span style={{display:'inline-flex',alignItems:'center',gap:8}}>
+      <span style={{display:'inline-flex',alignItems:'center',gap:3}}>
+        <StarIco size={st}/>
+        <span style={{fontFamily:"'Geist Mono',monospace",fontSize:fs,color:'#353756'}}>{rating}</span>
+      </span>
+      {tabelogRating&&(
+        <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",
+          fontSize:fs,color:'#4836B4',background:'#F1EEFF',padding:'2px 7px',borderRadius:6}}>
+          <span style={{fontSize:fs-1,fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700}}>食</span>
+          {tabelogRating}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const BudgetBadge = ({budget}) => budget ? (
+  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E',
+    background:'#ECEDF6',padding:'2px 7px',borderRadius:6}}>{budget}</span>
+) : null;
+
+/* ── MAP ── */
+function AnchorMap({pins=[],connect=true,height='100%'}) {
+  const route=pins.filter(p=>p.kind!=='you').map(p=>`${p.x},${p.y}`).join(' ');
+  return (
+    <div style={{position:'relative',width:'100%',height,overflow:'hidden',background:'#E9EBF3'}}>
+      <svg viewBox="0 0 390 360" preserveAspectRatio="xMidYMid slice"
+        style={{position:'absolute',inset:0,width:'100%',height:'100%',display:'block'}}>
+        <rect width="390" height="360" fill="#E9EBF3"/>
+        <path d="M250 360 C265 300 320 286 390 292 L390 360 Z" fill="#CFE3EE"/>
+        <path d="M-20 120 C70 150 120 210 210 250 C275 279 320 300 360 360 L335 360 C300 312 250 292 195 268 C110 230 60 178 -20 152 Z" fill="#CFE3EE" opacity=".85"/>
+        <rect x="36" y="46" width="78" height="58" rx="14" fill="#D8ECDB"/>
+        <rect x="292" y="120" width="74" height="64" rx="16" fill="#D8ECDB"/>
+        <g fill="#F4F5FA">
+          {[[132,36,60,44],[200,30,52,40],[262,40,58,50],[40,120,56,48],[104,116,46,40],
+            [158,96,62,46],[228,96,48,42],[40,186,62,52],[112,176,52,46],[248,170,56,44],
+            [316,206,52,48],[44,262,58,50],[116,246,48,42],[232,248,46,40]].map(([x,y,w,h],i)=>(
+            <rect key={i} x={x} y={y} width={w} height={h} rx="7"/>
+          ))}
+        </g>
+        <g fill="#EAEBF4">
+          <rect x="196" y="78" width="26" height="58" rx="6"/>
+          <rect x="100" y="60" width="26" height="50" rx="6"/>
+          <rect x="300" y="100" width="22" height="92" rx="6"/>
+          <rect x="170" y="160" width="68" height="22" rx="6"/>
+        </g>
+        <g stroke="#fff" strokeLinecap="round" fill="none">
+          <path d="M0 92 L390 70" strokeWidth="6"/>
+          <path d="M0 160 L300 150 L390 196" strokeWidth="6"/>
+          <path d="M30 0 L70 360" strokeWidth="5"/>
+          <path d="M150 0 L196 300" strokeWidth="5"/>
+          <path d="M250 0 L300 250" strokeWidth="5"/>
+          <path d="M0 240 L240 240" strokeWidth="4" opacity=".8"/>
+        </g>
+      </svg>
+      {connect&&route&&(
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+          style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
+          <polyline points={route} fill="none" stroke="#8B72FB" strokeWidth="2.5"
+            strokeDasharray="1.5 3" strokeLinecap="round" strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke" opacity=".9"/>
+        </svg>
+      )}
+      {pins.map((pin,i)=>{
+        const isYou=pin.kind==='you',isAnc=pin.kind==='anchor';
+        const color=isAnc?'#FB7242':'#6C5CE7';
+        const big=pin.big,w=big?38:30,h=big?48:38;
+        return (
+          <div key={pin.id||i} style={{position:'absolute',left:pin.x+'%',top:pin.y+'%',
+            transform:'translate(-50%,-100%)',zIndex:big?30:isAnc?20:12}}>
+            {isYou?(
+              <div style={{transform:'translateY(50%)'}}>
+                <div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',
+                  width:34,height:34,borderRadius:'50%',background:'rgba(108,92,231,0.18)'}}/>
+                <div style={{position:'relative',width:18,height:18,borderRadius:'50%',
+                  background:'#6C5CE7',border:'3px solid #fff',boxShadow:'0 2px 6px rgba(108,92,231,0.45)'}}/>
+              </div>
+            ):(
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',
+                filter:`drop-shadow(0 6px 10px ${isAnc?'rgba(251,114,66,0.45)':'rgba(108,92,231,0.40)'})`}}>
+                {big&&pin.label&&<div style={{marginBottom:6,background:'#fff',color:'#16172A',
+                  fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:12,whiteSpace:'nowrap',
+                  padding:'6px 9px',borderRadius:999,boxShadow:'0 2px 8px rgba(22,23,42,0.16)'}}>{pin.label}</div>}
+                <svg width={w} height={h} viewBox="0 0 30 38">
+                  <path d="M15 0 C6.7 0 0 6.7 0 15 C0 26 12 33 15 38 C18 33 30 26 30 15 C30 6.7 23.3 0 15 0 Z" fill={color}/>
+                  <circle cx="15" cy="14.5" r="9.5" fill="#fff"/>
+                  <text x="15" y="15" textAnchor="middle" dominantBaseline="central"
+                    fontFamily="'Schibsted Grotesk',sans-serif" fontWeight="700" fontSize="13" fill={color}>{pin.num??i+1}</text>
+                </svg>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── TIMELINE ── */
+function Timeline({stops,onOpen,onAdd,onSkip}) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',padding:'4px 18px 8px'}}>
+      {stops.map((s)=>{
+        const isAnc=s.kind==='anchor';
+        const nodeBg=isAnc?'#FB7242':s.added?'#6C5CE7':'#F1EEFF';
+        const nodeInk=isAnc?'#fff':s.added?'#fff':'#6C5CE7';
+        const nodeBorder=isAnc?'none':s.added?'none':'2px dashed #A793FF';
+        return (
+          <div key={s.id} style={{display:'flex',gap:14,alignItems:'stretch'}}>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:34,flexShrink:0}}>
+              <div style={{width:34,height:34,borderRadius:'50%',background:nodeBg,border:nodeBorder,color:nodeInk,
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,
+                boxShadow:isAnc?'0 4px 10px rgba(251,114,66,0.35)':s.added?'0 4px 10px rgba(108,92,231,0.30)':'none',
+                zIndex:2}}>{s.num}</div>
+              {s.hasLine&&<div style={{flex:1,width:2,background:'repeating-linear-gradient(#D5D6E4 0 5px,transparent 5px 10px)',margin:'4px 0'}}/>}
+            </div>
+            <div style={{flex:1,paddingBottom:s.travel?'4px':'22px'}}>
+              <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:500,color:'#6C6E8E',letterSpacing:'0.02em',margin:'6px 0'}}>{s.time}</div>
+              {isAnc?(
+                <div onClick={()=>onOpen&&onOpen(s.id)} style={{background:'#fff',borderRadius:20,
+                  boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',overflow:'hidden',cursor:'pointer'}}>
+                  <div style={{display:'flex',gap:12,padding:'13px 14px'}}>
+                    <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:s.catGrad,
+                      display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/>
+                      </svg>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#FFE2D4',color:'#ED5A2A',
+                          fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:11,letterSpacing:'0.04em',
+                          textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>
+                          <AnchorIco size={11} color="#ED5A2A"/> Anchor
+                        </span>
+                        <StatusPill openNow={s.openNow} small/>
+                      </div>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4,flexWrap:'wrap'}}>
+                        <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>{s.area}</span>
+                        <Ratings rating={s.rating} tabelogRating={s.tabelogRating}/>
+                        <BudgetBadge budget={s.budget}/>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:9,padding:'11px 14px',background:'#FFF6F1',borderTop:'1px solid #FFE9DD'}}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ED5A2A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:1}}>
+                      <path d="M9 18h6M10 22h4M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                    </svg>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#7a4a30',lineHeight:1.4}}>{s.note}</div>
+                  </div>
+                </div>
+              ):(
+                <div style={{background:'#fff',borderRadius:20,border:'1.5px dashed #C9BEFF',
+                  boxShadow:'0 1px 2px rgba(22,23,42,0.05)',overflow:'hidden'}}>
+                  <div onClick={()=>onOpen&&onOpen(s.id)} style={{display:'flex',gap:12,padding:'13px 14px',cursor:'pointer'}}>
+                    <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:s.catGrad,
+                      display:'flex',alignItems:'center',justifyContent:'center',opacity:.95}}>
+                      <SparkleIco size={22}/>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F1EEFF',color:'#5A48D6',
+                          fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:11,letterSpacing:'0.04em',
+                          textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>Suggested</span>
+                        <StatusPill openNow={s.openNow} small/>
+                      </div>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4,flexWrap:'wrap'}}>
+                        <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>{s.area}</span>
+                        <Ratings rating={s.rating} tabelogRating={s.tabelogRating}/>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:9,padding:'0 14px 12px'}}>
+                    <SparkleIco size={16} color="#8B72FB"/>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.45,fontStyle:'italic'}}>{s.reason}</div>
+                  </div>
+                  {s.added?(
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,
+                      padding:'11px 14px',background:'#F1EEFF',borderTop:'1px solid #E4DEFF'}}>
+                      <span style={{display:'inline-flex',alignItems:'center',gap:6,
+                        fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,color:'#5A48D6'}}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A48D6" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        Added to your day
+                      </span>
+                      <button onClick={()=>onSkip&&onSkip(s.id)} style={{border:'none',background:'transparent',fontWeight:600,fontSize:13.5,color:'#9092AD',cursor:'pointer',padding:4}}>Remove</button>
+                    </div>
+                  ):(
+                    <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#FAFAFD',borderTop:'1px solid #ECEDF6'}}>
+                      <button onClick={()=>onAdd&&onAdd(s.id)} style={{flex:1,border:'none',background:'#6C5CE7',color:'#fff',fontWeight:600,fontSize:14,padding:10,borderRadius:12,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,boxShadow:'0 4px 12px rgba(108,92,231,0.28)'}}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                        Add to day
+                      </button>
+                      <button onClick={()=>onSkip&&onSkip(s.id)} style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#6C6E8E',fontWeight:600,fontSize:14,padding:'10px 16px',borderRadius:12,cursor:'pointer'}}>Skip</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {s.travel&&(
+                <div style={{display:'flex',alignItems:'center',gap:7,padding:'11px 2px 3px',color:'#9092AD',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5}}>
+                  <WalkIco size={15} color="#B6B8CC"/> {s.travel}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── TODAY ── */
+const segBase={border:'none',background:'transparent',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'6px 14px',borderRadius:999,cursor:'pointer',transition:'all .15s'};
+const segOn={...segBase,background:'#fff',color:'#16172A',boxShadow:'0 1px 3px rgba(22,23,42,0.14)'};
+
+function TodayScreen({layout,setLayout,push,added,setAdded}) {
+  const dayStops=[
+    {...bp('senso'),  kind:'anchor', num:1,time:'09:30',travel:'12 min walk · along the Sumida',hasLine:true},
+    {...bp('blue'),   kind:'suggest',num:2,time:'11:30',travel:'8 min walk to the market',hasLine:true,added:!!added.blue},
+    {...bp('tsukiji'),kind:'anchor', num:3,time:'13:00',hasLine:false},
+  ];
+  const dayPins=[
+    {id:'senso',x:76,y:22,num:1,kind:'anchor'},
+    {id:'blue',x:64,y:45,num:2,kind:'suggest'},
+    {id:'tsukiji',x:55,y:64,num:3,kind:'anchor'},
+    {id:'you',x:40,y:70,kind:'you'},
+  ];
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',zIndex:5}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}>
+              <AnchorIco size={13}/> Tokyo
+            </div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:3}}>Day 2 · Old Tokyo</div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            {['m15 18-6-6 6-6','m9 18 6-6-6-6'].map((d,i)=>(
+              <button key={i} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
+              </button>
+            ))}
+            <button onClick={()=>push({type:'trip'})} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>
+            <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>Sun, Jun 15</span> · 3 stops
+          </div>
+          <div style={{display:'inline-flex',background:'#ECEDF6',borderRadius:999,padding:3}}>
+            {['A','B','C'].map((l,i)=>(
+              <button key={l} onClick={()=>setLayout(l)} style={layout===l?segOn:segBase}>{['Map','Sheet','List'][i]}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {layout==='A'&&(
+        <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0}}>
+          <div style={{height:250,flexShrink:0,position:'relative'}}>
+            <AnchorMap pins={dayPins} connect height="250px"/>
+            <div style={{position:'absolute',left:14,bottom:14,display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.92)',backdropFilter:'blur(8px)',borderRadius:999,padding:'7px 13px 7px 9px',boxShadow:'0 4px 14px rgba(22,23,42,0.14)'}}>
+              <span style={{width:16,height:16,borderRadius:'50%',background:'#FB7242',display:'inline-flex'}}/>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#353756'}}>2 anchors</span>
+              <span style={{width:5,height:5,borderRadius:'50%',background:'#D5D6E4'}}/>
+              <span style={{width:12,height:12,borderRadius:'50%',background:'#6C5CE7',display:'inline-flex'}}/>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#353756'}}>1 pick</span>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:'auto',paddingTop:8,paddingBottom:24}}>
+            <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+              onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
+          </div>
+        </div>
+      )}
+      {layout==='B'&&(
+        <div style={{flex:1,position:'relative',minHeight:0}}>
+          <div style={{position:'absolute',top:0,left:0,right:0,height:200}}>
+            <AnchorMap pins={dayPins} connect height="200px"/>
+          </div>
+          <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
+            <div style={{height:158}}/>
+            <div style={{position:'relative',background:'#FAFAFD',borderRadius:'26px 26px 0 0',boxShadow:'0 -8px 24px rgba(22,23,42,0.12)',minHeight:420,paddingTop:6,paddingBottom:24}}>
+              <div style={{width:40,height:5,borderRadius:999,background:'#D5D6E4',margin:'9px auto 4px'}}/>
+              <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',padding:'4px 20px 6px'}}>
+                <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>Your day</span>
+                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>3h 15m · 4.2 km</span>
+              </div>
+              <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+                onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
+            </div>
+          </div>
+        </div>
+      )}
+      {layout==='C'&&(
+        <div style={{flex:1,overflowY:'auto',padding:'14px 18px 24px'}}>
+          <div style={{borderRadius:18,overflow:'hidden',height:120,position:'relative',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',marginBottom:4}}>
+            <AnchorMap pins={dayPins} connect height="120px"/>
+          </div>
+          <div style={{margin:'0 -18px'}}>
+            <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+              onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── DISCOVER ── */
+function DiscoverScreen({push}) {
+  const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
+  const featured=bp('omoide');
+  const list=['blue','nezu','yoyogi'].map(bp);
+  return (
+    <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
+      <div style={{padding:'16px 18px 8px'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Discover · Tokyo</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>Picked for how<br/>you travel</div>
+      </div>
+      <div style={{display:'flex',gap:8,overflowX:'auto',padding:'8px 18px 14px'}}>
+        {chips.map(c=>(
+          <span key={c} style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,background:'#fff',border:'1px solid #E3E5F0',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,color:'#4E5072',whiteSpace:'nowrap'}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:'#FB7242'}}/>{c}
+          </span>
+        ))}
+      </div>
+      <div style={{padding:'0 18px 6px'}}>
+        <div onClick={()=>push({type:'place',id:'omoide'})} style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
+          <div style={{height:136,background:featured.catGrad,position:'relative',padding:14}}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.9)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
+              <StarIco size={13} color="#ED5A2A"/> Top match · 96%
+            </span>
+            <div style={{position:'absolute',right:14,bottom:14,display:'flex',gap:7,alignItems:'center'}}>
+              <StatusPill openNow={featured.openNow} small/>
+              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'rgba(255,255,255,0.92)',background:'rgba(0,0,0,0.16)',padding:'5px 9px',borderRadius:8}}>{featured.area}</span>
+            </div>
+          </div>
+          <div style={{padding:'14px 16px 16px'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,color:'#16172A',letterSpacing:'-0.01em',flex:1}}>{featured.name}</div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
+                <Ratings rating={featured.rating} tabelogRating={featured.tabelogRating}/>
+                <BudgetBadge budget={featured.budget}/>
+              </div>
+            </div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:3}}>{featured.station}</div>
+            <div style={{display:'flex',gap:9,marginTop:10,background:'#FFF1EA',borderRadius:14,padding:'12px 13px'}}>
+              <SparkleIco size={17} color="#FB7242"/>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.45}}>{featured.reason}</div>
+            </div>
+            <button style={{marginTop:12,width:'100%',border:'none',background:'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:'#fff',fontWeight:600,fontSize:15,padding:13,borderRadius:14,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:'0 6px 18px rgba(248,87,166,0.32)'}}>
+              <AnchorIco size={17} color="#fff"/> Anchor it
+            </button>
+          </div>
+        </div>
+      </div>
+      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you</div>
+      <div style={{display:'flex',flexDirection:'column',gap:12,padding:'0 18px 24px'}}>
+        {list.map(p=>(
+          <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{display:'flex',gap:13,background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+            <div style={{width:80,height:80,borderRadius:14,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:7}}>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
+                <BudgetBadge budget={p.budget}/>
+              </div>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.station}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+                <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                <StatusPill openNow={p.openNow} small/>
+              </div>
+              {p.reason&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.4,marginTop:7,fontStyle:'italic'}}>{p.reason}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── NEAR ── */
+function NearScreen({push,filter,setFilter}) {
+  const raw=[
+    {id:'ichiran',dist:'220 m',walk:'3 min',status:'open'},
+    {id:'about',dist:'300 m',walk:'4 min',status:'soon'},
+    {id:'sky',dist:'400 m',walk:'6 min',status:'open'},
+    {id:'gyukatsu',dist:'480 m',walk:'6 min',status:'open'},
+    {id:'nonbei',dist:'290 m',walk:'4 min',status:'closed'},
+    {id:'fuglen',dist:'650 m',walk:'9 min',status:'open'},
+  ];
+  const nearList=raw.filter(n=>{
+    if(filter==='open') return n.status!=='closed';
+    if(filter==='food') return PLACES[n.id].cat==='food';
+    if(filter==='coffee') return PLACES[n.id].cat==='coffee';
+    return true;
+  }).map(n=>({...bp(n.id),...n,openNow:n.status}));
+  const nearPins=[
+    {id:'you',x:46,y:56,kind:'you'},
+    {id:'ichiran',x:30,y:64,num:1,kind:'anchor'},
+    {id:'sky',x:38,y:40,num:2,kind:'anchor'},
+    {id:'about',x:60,y:50,num:3,kind:'suggest'},
+    {id:'nonbei',x:56,y:70,num:4,kind:'suggest'},
+  ];
+  const fBase={border:'1px solid #E3E5F0',background:'#fff',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'8px 14px',borderRadius:999,cursor:'pointer',flexShrink:0};
+  const fOn={...fBase,background:'#6C5CE7',color:'#fff',border:'1px solid #6C5CE7'};
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#6C5CE7'}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+          Near you now
+        </div>
+        <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginTop:3}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05}}>Shibuya</div>
+          <div style={{fontFamily:"'Geist Mono',monospace",fontSize:13,color:'#6C6E8E'}}>6:24 PM</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto'}}>
+        <div style={{padding:'12px 18px 4px'}}>
+          <div style={{borderRadius:18,overflow:'hidden',height:106,position:'relative',boxShadow:'inset 0 0 0 1px #E7E8F1'}}>
+            <AnchorMap pins={nearPins} connect={false} height="106px"/>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px'}}>
+          {[['all','All'],['open','Open now'],['food','Food'],['coffee','Coffee']].map(([k,l])=>(
+            <button key={k} onClick={()=>setFilter(k)} style={filter===k?fOn:fBase}>{l}</button>
+          ))}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:10,padding:'0 18px 24px'}}>
+          {nearList.map(n=>(
+            <div key={n.id} onClick={()=>push({type:'place',id:n.id})} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+              <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:n.catGrad,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',textAlign:'center',lineHeight:1.2,padding:'0 4px'}}>{n.dist}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1}}>{n.name}</div>
+                <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
+                  <StatusPill openNow={n.openNow} small/>
+                  <Ratings rating={n.rating} tabelogRating={n.tabelogRating}/>
+                  <BudgetBadge budget={n.budget}/>
+                </div>
+              </div>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E',flexShrink:0}}>
+                <WalkIco size={12}/> {n.walk}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── ANCHORS ── */
+function AnchorsScreen({push}) {
+  const total=ANCHORS_DATA.reduce((t,a)=>t+a.categories.reduce((s,c)=>s+c.placeIds.length,0),0);
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Your anchors</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:4}}>Tokyo</div>
+        <div style={{display:'flex',gap:7,marginTop:12}}>
+          {[{v:ANCHORS_DATA.length,l:'hotels',c:'#FB7242'},{v:TRIP.days.length,l:'days',c:'#6C5CE7'},{v:total,l:'saved',c:'#353756'}].map(({v,l,c})=>(
+            <div key={l} style={{flex:1,background:'#fff',borderRadius:16,padding:'11px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+              <div style={{fontFamily:"'Geist Mono',monospace",fontWeight:600,fontSize:21,color:c}}>{v}</div>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:1}}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'12px 18px 24px'}}>
+        {ANCHORS_DATA.map(a=>(
+          <div key={a.id} onClick={()=>push({type:'anchor',anchorId:a.id})} style={{background:'#fff',borderRadius:22,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 8px 20px rgba(22,23,42,0.07)',cursor:'pointer',marginBottom:14}}>
+            <div style={{background:'linear-gradient(135deg,#9AA0FF,#6C5CE7)',padding:'18px 16px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+              <div>
+                <div style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(255,255,255,0.18)',borderRadius:999,padding:'3px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.9)',marginBottom:7}}>
+                  <AnchorIco size={10} color="rgba(255,255,255,0.9)"/> HOTEL ANCHOR
+                </div>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:19,color:'#fff',lineHeight:1.1}}>{a.name}</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'rgba(255,255,255,0.72)',marginTop:3}}>{a.area} · {a.dates} · {a.nights} nights</div>
+              </div>
+              <ChevRight color="rgba(255,255,255,0.5)" size={20}/>
+            </div>
+            <div style={{padding:'10px 14px 12px'}}>
+              {a.categories.map((cat,ci)=>(
+                <div key={cat.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:ci<a.categories.length-1?'1px solid #ECEDF6':'none'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:9}}>
+                    <div style={{width:8,height:8,borderRadius:'50%',background:'#FB7242',flexShrink:0}}/>
+                    <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,fontWeight:600,color:'#353756'}}>{cat.name}</span>
+                  </div>
+                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#9092AD'}}>{cat.placeIds.length} saved</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── SEARCH ── */
+function SearchScreen({push}) {
+  const [q,setQ]=useState('');
+  const allPlaces=Object.keys(PLACES).map(bp);
+  const results=q.length<2?[]:allPlaces.filter(p=>{
+    const s=(p.name+p.area+p.catLabel+(p.note||'')+(p.reason||'')+(p.digest||'')).toLowerCase();
+    return s.includes(q.toLowerCase());
+  }).map(p=>{
+    const qLow=q.toLowerCase();
+    let why='';
+    if(p.name.toLowerCase().includes(qLow)) why='Name match';
+    else if(p.catLabel.toLowerCase().includes(qLow)) why=`Category: ${p.catLabel}`;
+    else if(p.area.toLowerCase().includes(qLow)) why=`Neighborhood: ${p.area}`;
+    else {
+      const text=p.note||p.reason||p.digest||'';
+      const idx=text.toLowerCase().indexOf(qLow);
+      if(idx>-1) {
+        const snip=text.slice(Math.max(0,idx-15),idx+50).trim();
+        why=`"…${snip}…"`;
+      }
+    }
+    return {...p,why};
+  });
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD',marginBottom:10}}>Search saved</div>
+        <div style={{position:'relative'}}>
+          <svg style={{position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}
+            width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9092AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Place, neighborhood, dish, note…"
+            style={{width:'100%',border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 40px 12px 42px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+          {q&&<button onClick={()=>setQ('')} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',border:'none',background:'none',color:'#9092AD',fontSize:20,lineHeight:1,padding:2}}>×</button>}
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto'}}>
+        {q.length<2&&(
+          <div style={{padding:'40px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search by name, neighborhood, category, or what a place is known for.</div>
+          </div>
+        )}
+        {q.length>=2&&results.length===0&&(
+          <div style={{padding:'40px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No saved places match "{q}"</div>
+          </div>
+        )}
+        {results.length>0&&(
+          <div style={{padding:'10px 18px 24px'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:10}}>{results.length} {results.length===1?'match':'matches'}</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {results.map(p=>(
+                <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+                  <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+                    <div style={{width:44,height:44,borderRadius:12,flexShrink:0,background:p.catGrad}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
+                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.catLabel}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+                        <StatusPill openNow={p.openNow} small/>
+                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                        <BudgetBadge budget={p.budget}/>
+                      </div>
+                    </div>
+                  </div>
+                  {p.why&&(
+                    <div style={{marginTop:10,display:'flex',gap:8,alignItems:'flex-start',background:'#F4F5FA',borderRadius:10,padding:'8px 11px'}}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:1}}>
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                      </svg>
+                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── ANCHOR DETAIL OVERLAY ── */
+function AnchorDetailOverlay({anchorId,pop,push}) {
+  const anchor=ANCHORS_DATA.find(a=>a.id===anchorId);
+  if(!anchor) return null;
+  return (
+    <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>{anchor.name}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{anchor.area} · {anchor.dates}</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'8px 18px 32px'}}>
+        {anchor.categories.map(cat=>(
+          <div key={cat.id} style={{marginBottom:24}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,marginTop:8}}>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>{cat.name}</div>
+              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#9092AD'}}>{cat.placeIds.length} places</span>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {cat.placeIds.map(pid=>{
+                const p=bp(pid);
+                return (
+                  <div key={pid} onClick={()=>push({type:'place',id:pid})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                    <div style={{width:72,height:72,borderRadius:13,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:6}}>
+                      <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.18)',padding:'2px 6px',borderRadius:999}}>{p.catLabel}</span>
+                    </div>
+                    <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
+                        <BudgetBadge budget={p.budget}/>
+                      </div>
+                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
+                        <StatusPill openNow={p.openNow} small/>
+                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                      </div>
+                    </div>
+                    <ChevRight/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── TRIP OVERLAY ── */
+function TripOverlay({pop,push}) {
+  return (
+    <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A'}}>Tokyo · June 2026</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>4 days · 2 hotels</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'12px 18px 32px'}}>
+        {/* Flights */}
+        {TRIP.flights.map((f,i)=>(
+          <div key={i} style={{display:'flex',gap:14,alignItems:'center',padding:'13px 0',borderBottom:'1px solid #ECEDF6'}}>
+            <div style={{width:42,height:42,borderRadius:12,background:f.dir==='arrive'?'#D6F5E6':'#FEE0E6',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke={f.dir==='arrive'?'#14A06E':'#F23E63'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{transform:f.dir==='arrive'?'rotate(-45deg)':'rotate(45deg)'}}>
+                <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L8 10 .8 8.2l6.3-3.7c1.2-.7 2.5-1.1 3.9-1.1H14l1.5-1.5A5.5 5.5 0 0 1 23 9v3l-5.2 7.2z"/>
+              </svg>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:12,color:f.dir==='arrive'?'#0E865B':'#D72850',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{f.dir==='arrive'?'Arriving':'Departing'}</div>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{f.label}</div>
+              <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E',marginTop:2}}>{f.time}</div>
+            </div>
+          </div>
+        ))}
+        {/* Days */}
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Days</div>
+        {TRIP.days.map((day,i)=>(
+          <div key={i} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:day.active?'2px solid #6C5CE7':'2px solid transparent'}}>
+            <div style={{padding:'13px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',background:day.active?'#F1EEFF':'transparent'}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
+                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:day.active?'#6C5CE7':'#9092AD',background:day.active?'#E4DEFF':'#ECEDF6',padding:'2px 8px',borderRadius:999}}>{day.label}</span>
+                  {day.active&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Today</span>}
+                </div>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>{day.date}</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{day.hotel}</div>
+              </div>
+              <ChevRight/>
+            </div>
+            {day.placeIds.length>0&&(
+              <div style={{padding:'9px 14px 11px',display:'flex',gap:7,flexWrap:'wrap',borderTop:'1px solid #ECEDF6'}}>
+                {day.placeIds.map(pid=>{
+                  const p=bp(pid);
+                  return (
+                    <div key={pid} onClick={e=>{e.stopPropagation();push({type:'place',id:pid})}}
+                      style={{display:'inline-flex',alignItems:'center',gap:5,background:'#F4F5FA',borderRadius:999,padding:'5px 10px',cursor:'pointer'}}>
+                      <div style={{width:7,height:7,borderRadius:'50%',background:'#FB7242'}}/>
+                      <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#353756'}}>{p.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── PLACE DETAIL ── */
+function PlaceDetailOverlay({id,pop,push}) {
+  const [note,setNote]=useState('');
+  const d=bp(id);
+  const isAnc=ANCHOR_IDS.includes(id);
+  const pairs=(PAIRS[id]||['blue','nonbei']).map(bp);
+  const s=sc(d.openNow);
+  const detailPins=[{id:d.id,x:52,y:46,kind:isAnc?'anchor':'suggest',big:true,label:d.area}];
+  return (
+    <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',overflowY:'auto',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{height:248,background:d.catGrad,position:'relative',flexShrink:0}}>
+        <div style={{position:'absolute',top:16,left:16,right:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <button onClick={pop} style={{width:40,height:40,borderRadius:'50%',border:'none',background:'rgba(255,255,255,0.92)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 8px rgba(22,23,42,0.16)'}}>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#232540" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button style={{width:40,height:40,borderRadius:'50%',border:'none',background:'rgba(255,255,255,0.92)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 8px rgba(22,23,42,0.16)'}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#232540" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>
+          </button>
+        </div>
+        <div style={{position:'absolute',left:18,bottom:16,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.92)',borderRadius:999,padding:'5px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#353756'}}>{d.catLabel}</span>
+          {isAnc&&<span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#FFE2D4',color:'#ED5A2A',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:11,letterSpacing:'0.04em',textTransform:'uppercase',padding:'4px 9px',borderRadius:999}}><AnchorIco size={10} color="#ED5A2A"/> Anchor</span>}
+        </div>
+      </div>
+
+      <div style={{padding:'18px 18px 0'}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:10,justifyContent:'space-between'}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:25,color:'#16172A',lineHeight:1.08,letterSpacing:'-0.02em',flex:1}}>{d.name}</div>
+          <StatusPill openNow={d.openNow}/>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:7,flexWrap:'wrap'}}>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#6C6E8E'}}>{d.area}</span>
+          <span style={{color:'#D5D6E4'}}>·</span>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#6C6E8E'}}>{d.station}</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginTop:10,flexWrap:'wrap'}}>
+          <Ratings rating={d.rating} tabelogRating={d.tabelogRating} size="md"/>
+          <BudgetBadge budget={d.budget}/>
+        </div>
+
+        {/* Info cards */}
+        <div style={{display:'flex',gap:9,marginTop:16}}>
+          <div style={{flex:1,background:'#fff',borderRadius:14,padding:'11px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:'#9092AD'}}>Hours</div>
+            <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756',marginTop:4,lineHeight:1.4}}>{d.hours}</div>
+          </div>
+          <div style={{flex:1,background:s.soft,borderRadius:14,padding:'11px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:s.ink}}>Now</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,color:s.ink,marginTop:4,display:'flex',alignItems:'center',gap:6}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:s.dot}}/>{s.label}
+            </div>
+          </div>
+        </div>
+
+        {/* Why */}
+        <div style={{marginTop:14,background:'#FFF1EA',borderRadius:18,padding:'14px 15px'}}>
+          <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#ED5A2A',marginBottom:8}}>
+            <SparkleIco size={14} color="#ED5A2A"/>
+            {isAnc?'Why it\'s an anchor':'Why it fits you'}
+          </div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#7a4a30',lineHeight:1.5}}>{d.reason||d.note}</div>
+        </div>
+
+        {/* What locals say */}
+        {d.digest&&(
+          <div style={{marginTop:12,background:'#F4F5FA',borderRadius:18,padding:'14px 15px'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#6C5CE7',marginBottom:8}}>What locals say</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#353756',lineHeight:1.55}}>{d.digest}</div>
+          </div>
+        )}
+
+        {/* Map mini */}
+        <div style={{marginTop:14,borderRadius:18,overflow:'hidden',height:128,boxShadow:'inset 0 0 0 1px #E7E8F1'}}>
+          <AnchorMap pins={detailPins} connect={false} height="128px"/>
+        </div>
+
+        {/* Notes */}
+        <div style={{marginTop:16}}>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#9092AD',marginBottom:8}}>Your notes</div>
+          <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Add a note…"
+            style={{width:'100%',border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#353756',outline:'none',resize:'none',lineHeight:1.5,minHeight:78}}/>
+        </div>
+
+        {/* Nearby */}
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',margin:'18px 0 10px'}}>Fits nearby</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:100}}>
+          {pairs.map(p=>(
+            <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{display:'flex',alignItems:'center',gap:12,background:'#fff',borderRadius:16,padding:'10px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+              <div style={{width:46,height:46,borderRadius:12,flexShrink:0,background:p.catGrad}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:600,fontSize:15,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
+                <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4,flexWrap:'wrap'}}>
+                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{p.catLabel} · {p.area}</span>
+                  <StatusPill openNow={p.openNow} small/>
+                </div>
+              </div>
+              <ChevRight/>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{position:'sticky',bottom:0,display:'flex',gap:10,padding:'12px 18px 28px',background:'linear-gradient(180deg,rgba(250,250,253,0) 0%,#FAFAFD 28%)'}}>
+        <button style={{flex:1,border:'none',background:'#6C5CE7',color:'#fff',fontWeight:600,fontSize:15,padding:14,borderRadius:15,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          {isAnc?'Anchored':'Anchor it'}
+        </button>
+        <button style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#4E5072',fontWeight:600,fontSize:15,padding:'14px 18px',borderRadius:15,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:7}}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18h6M21 3l-9 9M21 3v6h-6M3 12a9 9 0 0 0 9 9"/>
+          </svg>
+          Directions
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── BOTTOM NAV ── */
+function TabIco({id,on}) {
+  const c=on?'#6C5CE7':'#9092AD';
+  if(id==='today') return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>;
+  if(id==='discover') return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.6 4-4 2.6 2.6-4z"/></svg>;
+  if(id==='near') return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>;
+  if(id==='anchors') return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="2.4"/><path d="M12 7.4V21M6 13H4a8 8 0 0 0 16 0h-2M8.5 18.5 12 21l3.5-2.5"/></svg>;
+  if(id==='search') return <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
+  return null;
+}
+
+const NAV=[{id:'today',label:'Today'},{id:'discover',label:'Discover'},{id:'near',label:'Near'},{id:'anchors',label:'Anchors'},{id:'search',label:'Search'}];
+
+function BottomNav({tab,setTab}) {
+  return (
+    <div style={{flexShrink:0,display:'flex',padding:'8px 2px 20px',background:'rgba(255,255,255,0.86)',backdropFilter:'blur(18px)',borderTop:'1px solid #ECEDF6',zIndex:20}}>
+      {NAV.map(t=>{
+        const on=tab===t.id;
+        return (
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'6px 0',border:'none',background:'transparent',cursor:'pointer',color:on?'#6C5CE7':'#9092AD'}}>
+            <TabIco id={t.id} on={on}/>
+            <span style={{fontSize:10,fontWeight:600,fontFamily:"'Hanken Grotesk',sans-serif"}}>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── APP ── */
+function App() {
+  const [tab,setTab]=useState('today');
+  const [layout,setLayout]=useState('A');
+  const [filter,setFilter]=useState('all');
+  const [added,setAdded]=useState({});
+  const [stack,setStack]=useState([]);
+
+  const push=s=>setStack(p=>[...p,s]);
+  const pop=()=>setStack(p=>p.slice(0,-1));
+  const top=stack[stack.length-1];
+  const changeTab=t=>{setTab(t);setStack([]);};
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
+      <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded}/>}
+        {tab==='discover' &&<DiscoverScreen push={push}/>}
+        {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter}/>}
+        {tab==='anchors'  &&<AnchorsScreen push={push}/>}
+        {tab==='search'   &&<SearchScreen push={push}/>}
+
+        {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id}        id={top.id}        pop={pop} push={push}/>}
+        {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push}/>}
+        {top&&top.type==='trip'   &&<TripOverlay                            pop={pop} push={push}/>}
+      </div>
+      {stack.length===0&&<BottomNav tab={tab} setTab={changeTab}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
