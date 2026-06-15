@@ -1,0 +1,5 @@
+name = "anchor"
+compatibility_date = "2026-06-15"
+
+# Static site lives at the repo root; Pages Functions live in ./functions.
+pages_build_output_dir = "."

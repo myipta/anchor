@@ -609,7 +609,7 @@ function OnboardingFlow({onComplete,initialData}){
 const segBase={border:'none',background:'transparent',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'6px 14px',borderRadius:999,cursor:'pointer',transition:'all .15s'};
 const segOn={...segBase,background:'#fff',color:'#16172A',boxShadow:'0 1px 3px rgba(22,23,42,0.14)'};
 
-function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip}){
+function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab}){
   const today=todayStr();
   const dayIndex=trip.arrivalDate?daysBetween(trip.arrivalDate,today):0;
   const totalNights=trip.nights||4;
@@ -670,7 +670,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip}){
           )}
           <div style={{padding:'8px 18px 36px'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:12}}>While you wait, explore what's waiting:</div>
-            <button onClick={()=>push({type:'discover'})} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
+            <button onClick={()=>goTab&&goTab('discover')} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
               <SparkleIco size={18}/> Browse Tokyo picks
             </button>
           </div>
@@ -1360,7 +1360,7 @@ function App(){
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)}/>}
+        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
         {tab==='discover' &&<DiscoverScreen push={push}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip}/>}
