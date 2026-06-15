@@ -27,7 +27,7 @@ export async function onRequest(context) {
   if (!env.GOOGLE_PLACES_API_KEY) {
     return json({
       error: 'missing_key',
-      message: 'GOOGLE_PLACES_API_KEY is not configured. Add it in Cloudflare → Pages → Settings → Environment variables (encrypted).',
+      message: 'GOOGLE_PLACES_API_KEY is not configured. Add it in Cloudflare → Workers & Pages → anchor → Settings → Variables and Secrets (encrypted).',
     }, 503);
   }
 

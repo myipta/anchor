@@ -1,0 +1,13 @@
+{
+  // Cloudflare Worker config. The Git integration runs `npx wrangler deploy`,
+  // which bundles worker.js (+ its ./functions imports) and uploads ./public
+  // as static assets. API keys are set as encrypted vars in the dashboard,
+  // never here.
+  "name": "anchor",
+  "main": "worker.js",
+  "compatibility_date": "2026-06-15",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  }
+}
