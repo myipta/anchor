@@ -3,8 +3,7 @@
 # In PRODUCTION these are set in the Cloudflare dashboard, NOT in any file.
 
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
-APIFY_TOKEN=apify_api_xxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_PLACES_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXX
 
-# Optional overrides:
+# Optional override:
 # ANTHROPIC_MODEL=claude-sonnet-4-6
-# APIFY_ACTOR=compass~crawler-google-places

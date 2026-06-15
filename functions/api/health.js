@@ -13,10 +13,9 @@ export async function onRequest(context) {
     service: 'anchor-api',
     keys: {
       anthropic: Boolean(env.ANTHROPIC_API_KEY),
-      apify: Boolean(env.APIFY_TOKEN),
+      googlePlaces: Boolean(env.GOOGLE_PLACES_API_KEY),
     },
     model: env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
-    actor: env.APIFY_ACTOR || 'compass~crawler-google-places',
     time: new Date().toISOString(),
   });
 }

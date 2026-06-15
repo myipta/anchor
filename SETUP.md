@@ -7,11 +7,11 @@ variables in Cloudflare**, never in the code or the git repo.
 
 ## Endpoints
 
-| Route          | Method | Purpose                                                        | Key needed         |
-| -------------- | ------ | -------------------------------------------------------------- | ------------------ |
-| `/api/health`  | GET    | Reports which keys are configured (never returns the values)  | none               |
-| `/api/suggest` | POST   | Claude ranks candidate places for a traveler + writes reasons | `ANTHROPIC_API_KEY`|
-| `/api/places`  | POST   | Apify fetches real Tokyo venue data (ratings, hours, coords)  | `APIFY_TOKEN`      |
+| Route          | Method | Purpose                                                        | Key needed             |
+| -------------- | ------ | -------------------------------------------------------------- | ---------------------- |
+| `/api/health`  | GET    | Reports which keys are configured (never returns the values)  | none                   |
+| `/api/suggest` | POST   | Claude ranks candidate places for a traveler + writes reasons | `ANTHROPIC_API_KEY`    |
+| `/api/places`  | POST   | Google Places fetches real Tokyo venue data (rating, hours…)  | `GOOGLE_PLACES_API_KEY`|
 
 If a key is missing the endpoint returns `503 { error: "missing_key" }` with a
 clear message — the app keeps working on its built-in data.
@@ -21,9 +21,13 @@ clear message — the app keeps working on its built-in data.
 1. Cloudflare dashboard → **Workers & Pages → anchor → Settings → Environment variables**.
 2. Add, as **encrypted** (Secret) variables for Production (and Preview):
    - `ANTHROPIC_API_KEY` — your Claude API key (`sk-ant-…`)
-   - `APIFY_TOKEN` — your Apify token (`apify_api_…`)
+   - `GOOGLE_PLACES_API_KEY` — your Google Places API key (`AIza…`)
    - *(optional)* `ANTHROPIC_MODEL` (default `claude-haiku-4-5-20251001`; try `claude-sonnet-4-6`)
-   - *(optional)* `APIFY_ACTOR` (default `compass~crawler-google-places`)
+
+   The Google key must have the **Places API (New)** enabled in Google Cloud
+   (APIs & Services → Library). Restrict it to that API; an HTTP-referrer
+   restriction won't work since the call is made server-side, so prefer leaving
+   it unrestricted-by-referrer but **API-restricted** to Places.
 3. **Redeploy** (any push, or "Retry deployment") so the new vars take effect.
 4. Verify: open `https://anchor.mattyip.dev/api/health` → `keys` should read `true`.
 
@@ -52,6 +56,7 @@ curl -X POST http://localhost:8788/api/suggest \
 curl -X POST http://localhost:8788/api/places \
   -H 'content-type: application/json' \
   -d '{"query":"ramen","area":"Shibuya","limit":5}'
+# → { source, query, count, places:[{name,rating,reviews,openNow,budget,hours,coords,...}] }
 ```
 
 ## Calling from the app (next step)
