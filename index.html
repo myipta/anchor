@@ -26,7 +26,7 @@ input,textarea{font-family:'Hanken Grotesk',sans-serif}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState} = React;
+const {useState,useMemo} = React;
 
 /* ── DATA ── */
 const CATS = {
@@ -99,8 +99,6 @@ const PLACES = {
     digest:'The Tokyo outpost of the Oslo original. Mid-century chairs, long opening hours. The flat white is excellent; the cocktail menu after 5 PM draws a neighborhood crowd who treat it as a local bar.'},
 };
 
-const ANCHOR_IDS = ['senso','ichiran','sky','tsukiji','teamlab','shimo'];
-
 const PAIRS = {
   senso:['blue','omoide'],tsukiji:['blue','gyukatsu'],omoide:['nonbei','fuglen'],
   blue:['nezu','tsukiji'],nezu:['blue','yoyogi'],yoyogi:['about','shimo'],
@@ -109,34 +107,41 @@ const PAIRS = {
   nonbei:['gyukatsu','sky'],fuglen:['shimo','about'],
 };
 
-const ANCHORS_DATA = [
-  {id:'park-hyatt',name:'Park Hyatt Tokyo',area:'Shinjuku',dates:'Jun 14–16',nights:2,
-    categories:[
-      {id:'coffee',name:'Coffee',placeIds:['about','fuglen','blue']},
-      {id:'food',name:'Food & Drink',placeIds:['ichiran','gyukatsu','omoide','nonbei']},
-      {id:'sights',name:'Sights',placeIds:['sky','shimo','yoyogi']},
-    ]},
-  {id:'cerulean',name:'Cerulean Tower Tokyu',area:'Shibuya',dates:'Jun 16–18',nights:2,
-    categories:[
-      {id:'culture',name:'Culture & Art',placeIds:['senso','teamlab','nezu']},
-      {id:'food',name:'Food & Markets',placeIds:['tsukiji','gyukatsu','omoide']},
-      {id:'coffee',name:'Coffee',placeIds:['blue','about']},
-    ]},
-];
+/* ── UTILITIES ── */
+function addDays(d,n){const dt=new Date(d+'T00:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);}
+function daysBetween(from,to){return Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000);}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function fmtDateLong(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});}
+function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
+function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 
-const TRIP = {
-  name:'Tokyo',year:'June 2026',
-  flights:[
-    {dir:'arrive',label:'JL061  SFO → NRT',time:'Sat Jun 14 · 5:20 PM'},
-    {dir:'depart',label:'JL060  NRT → SFO',time:'Wed Jun 18 · 11:30 AM'},
-  ],
-  days:[
-    {date:'Sat Jun 14',label:'Day 1',hotel:'Park Hyatt',placeIds:['sky','ichiran']},
-    {date:'Sun Jun 15',label:'Day 2',hotel:'Park Hyatt',placeIds:['senso','blue','tsukiji'],active:true},
-    {date:'Mon Jun 16',label:'Day 3',hotel:'Cerulean',placeIds:['teamlab','nonbei']},
-    {date:'Tue Jun 17',label:'Day 4',hotel:'Cerulean',placeIds:['shimo','fuglen','nezu']},
-  ],
-};
+const PREF_OPTS=[
+  {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
+  {id:'ramen',label:'Ramen & noodles',emoji:'🍜',cat:'food'},
+  {id:'izakaya',label:'Izakaya & bars',emoji:'🍶',cat:'food'},
+  {id:'sushi',label:'Sushi',emoji:'🍣',cat:'food'},
+  {id:'temples',label:'Temples',emoji:'⛩',cat:'culture'},
+  {id:'art',label:'Art & museums',emoji:'🎨',cat:'art'},
+  {id:'vintage',label:'Vintage',emoji:'👘',cat:'nbhd'},
+  {id:'nature',label:'Parks & nature',emoji:'🌿',cat:'nature'},
+  {id:'street',label:'Street food',emoji:'🥢',cat:'food'},
+  {id:'nightlife',label:'Nightlife',emoji:'🌃',cat:'nbhd'},
+  {id:'views',label:'Views',emoji:'🗼',cat:'views'},
+  {id:'slow',label:'Slow mornings',emoji:'🌅',cat:'coffee'},
+];
+const PREF_TO_CATS={coffee:['coffee'],ramen:['food'],izakaya:['food'],sushi:['food'],temples:['culture'],art:['art'],vintage:['nbhd'],nature:['nature'],street:['food'],nightlife:['food','nbhd'],views:['views'],slow:['coffee']};
+const TOKYO_AREAS=['Shinjuku','Shibuya','Harajuku','Aoyama','Ginza','Asakusa','Ueno','Roppongi','Nakameguro','Ebisu','Shimokitazawa','Daikanyama','Koenji','Yanaka'];
+const AREA_LABELS={Shinjuku:'West Tokyo',Shibuya:'South Shibuya',Harajuku:'Harajuku',Aoyama:'Aoyama',Ginza:'Ginza',Asakusa:'Old Tokyo',Ueno:'Ueno · Yanaka',Roppongi:'Roppongi',Nakameguro:'Meguro River',Ebisu:'Ebisu',Shimokitazawa:'Shimokita',Daikanyama:'Daikanyama'};
+
+function getSuggestions(prefs,count=2,exclude=[]){
+  const cats=[...new Set(prefs.flatMap(p=>PREF_TO_CATS[p]||[]))];
+  const pool=Object.keys(PLACES).filter(id=>!exclude.includes(id));
+  const matches=cats.length>0?pool.filter(id=>cats.includes(PLACES[id].cat)):pool;
+  const use=matches.length>=count?matches:[...matches,...pool.filter(id=>!matches.includes(id))];
+  return use.slice(0,count).map(bp);
+}
 
 function bp(id) {
   const p=PLACES[id], c=CATS[p.cat]||CATS.nbhd;
@@ -304,7 +309,8 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
   return (
     <div style={{display:'flex',flexDirection:'column',padding:'4px 18px 8px'}}>
       {stops.map((s)=>{
-        const isAnc=s.kind==='anchor';
+        const isAnc=s.kind==='anchor'||s.kind==='hotel';
+        const isHotel=s.kind==='hotel';
         const nodeBg=isAnc?'#FB7242':s.added?'#6C5CE7':'#F1EEFF';
         const nodeInk=isAnc?'#fff':s.added?'#fff':'#6C5CE7';
         const nodeBorder=isAnc?'none':s.added?'none':'2px dashed #A793FF';
@@ -321,23 +327,29 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
             <div style={{flex:1,paddingBottom:s.travel?'4px':'22px'}}>
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:500,color:'#6C6E8E',letterSpacing:'0.02em',margin:'6px 0'}}>{s.time}</div>
               {isAnc?(
-                <div onClick={()=>onOpen&&onOpen(s.id)} style={{background:'#fff',borderRadius:20,
-                  boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',overflow:'hidden',cursor:'pointer'}}>
+                <div onClick={()=>!isHotel&&onOpen&&onOpen(s.id)} style={{background:'#fff',borderRadius:20,
+                  boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',overflow:'hidden',cursor:isHotel?'default':'pointer'}}>
                   <div style={{display:'flex',gap:12,padding:'13px 14px'}}>
                     <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:s.catGrad,
                       display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/>
-                      </svg>
+                      {isHotel?(
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                      ):(
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/>
+                        </svg>
+                      )}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                        <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#FFE2D4',color:'#ED5A2A',
+                        <span style={{display:'inline-flex',alignItems:'center',gap:4,background:isHotel?'#E4DEFF':'#FFE2D4',color:isHotel?'#5A48D6':'#ED5A2A',
                           fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:11,letterSpacing:'0.04em',
                           textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>
-                          <AnchorIco size={11} color="#ED5A2A"/> Anchor
+                          <AnchorIco size={11} color={isHotel?'#5A48D6':'#ED5A2A'}/> {isHotel?'Hotel':'Anchor'}
                         </span>
-                        <StatusPill openNow={s.openNow} small/>
+                        {!isHotel&&<StatusPill openNow={s.openNow} small/>}
                       </div>
                       <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
                       <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4,flexWrap:'wrap'}}>
@@ -414,48 +426,296 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
   );
 }
 
+/* ── ONBOARDING ── */
+function OBProgress({cur}){
+  return(
+    <div style={{display:'flex',gap:7,justifyContent:'center',padding:'6px 0'}}>
+      {[1,2,3].map(n=>(
+        <div key={n} style={{height:6,borderRadius:999,transition:'all .25s',
+          background:n===cur?'#6C5CE7':n<cur?'#A793FF':'#E3E5F0',
+          width:n===cur?22:6}}/>
+      ))}
+    </div>
+  );
+}
+
+function OBBack({onClick}){
+  return(
+    <button onClick={onClick} style={{width:48,height:48,borderRadius:14,border:'1.5px solid #E3E5F0',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+  );
+}
+
+function OnboardingFlow({onComplete,initialData}){
+  const [step,setStep]=useState(initialData?1:0);
+  const [arrive,setArrive]=useState(initialData?.arrivalDate||'');
+  const [nights,setNights]=useState(initialData?.nights||4);
+  const [hotelName,setHotelName]=useState(initialData?.anchors?.[0]?.name||'');
+  const [hotelArea,setHotelArea]=useState(initialData?.anchors?.[0]?.area||'');
+  const [prefs,setPrefs]=useState(initialData?.prefs||[]);
+  const depart=arrive?addDays(arrive,nights):'';
+
+  const finish=()=>{
+    const anchors=hotelName.trim()?[{id:'anc-0',name:hotelName.trim(),area:hotelArea||'Tokyo',checkin:arrive||todayStr(),checkout:depart||addDays(arrive||todayStr(),nights)}]:[];
+    onComplete({destination:'Tokyo',arrivalDate:arrive||todayStr(),departureDate:depart||addDays(arrive||todayStr(),nights),nights,anchors,prefs,anchoredPlaces:initialData?.anchoredPlaces||[]});
+  };
+
+  if(step===0) return(
+    <div style={{position:'absolute',inset:0,background:'linear-gradient(160deg,#1A1040 0%,#2D1B69 55%,#16172A 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 28px',textAlign:'center'}}>
+      <div style={{marginBottom:20}}><AnchorIco size={52} color="#FB7242"/></div>
+      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:56,color:'#fff',letterSpacing:'-0.03em',lineHeight:1}}>Anchor</div>
+      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:18,color:'rgba(255,255,255,0.6)',marginTop:10,marginBottom:48}}>Your Tokyo companion</div>
+      <div style={{width:'100%',background:'rgba(255,255,255,0.08)',borderRadius:20,padding:'18px 20px',marginBottom:24,textAlign:'left'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.4)',letterSpacing:'0.10em',textTransform:'uppercase',marginBottom:14}}>Set up in 3 steps</div>
+        {[['✈','Your arrival & trip length'],['🏨','Your hotel (your anchor)'],['🍜','Your travel style']].map(([e,t])=>(
+          <div key={t} style={{display:'flex',alignItems:'center',gap:13,marginBottom:11}}>
+            <span style={{fontSize:20,width:30,textAlign:'center'}}>{e}</span>
+            <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'rgba(255,255,255,0.8)'}}>{t}</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={()=>setStep(1)} style={{width:'100%',background:'#FB7242',color:'#fff',border:'none',borderRadius:18,padding:'18px 24px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,cursor:'pointer',boxShadow:'0 8px 32px rgba(251,114,66,0.50)'}}>
+        Plan your trip →
+      </button>
+    </div>
+  );
+
+  if(step===1) return(
+    <div style={{position:'absolute',inset:0,background:'#FAFAFD',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'24px 22px 0'}}>
+        <OBProgress cur={1}/>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:32,color:'#16172A',marginTop:18,letterSpacing:'-0.02em',lineHeight:1.1}}>When are you<br/>going to Tokyo?</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'28px 22px',display:'flex',flexDirection:'column',gap:22}}>
+        <div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',marginBottom:9,letterSpacing:'0.08em',textTransform:'uppercase'}}>Arriving</div>
+          <input type="date" value={arrive} min={todayStr()} onChange={e=>setArrive(e.target.value)}
+            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:16,padding:'15px 16px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:17,color:'#16172A',background:'#fff',outline:'none'}}/>
+        </div>
+        <div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',marginBottom:9,letterSpacing:'0.08em',textTransform:'uppercase'}}>How many nights?</div>
+          <div style={{display:'flex',alignItems:'center',gap:16,background:'#fff',border:'1.5px solid #E3E5F0',borderRadius:16,padding:'10px 16px'}}>
+            <button onClick={()=>setNights(n=>Math.max(1,n-1))} style={{width:40,height:40,borderRadius:'50%',border:'1.5px solid #E3E5F0',background:'#fff',fontSize:24,cursor:'pointer',color:'#6C5CE7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>−</button>
+            <div style={{flex:1,textAlign:'center'}}>
+              <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:34,color:'#16172A'}}>{nights}</span>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:16,color:'#9092AD',marginLeft:8}}>nights</span>
+            </div>
+            <button onClick={()=>setNights(n=>Math.min(30,n+1))} style={{width:40,height:40,borderRadius:'50%',border:'1.5px solid #E3E5F0',background:'#fff',fontSize:24,cursor:'pointer',color:'#6C5CE7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>+</button>
+          </div>
+        </div>
+        {arrive&&(
+          <div style={{background:'#F1EEFF',borderRadius:16,padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+            <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,fontWeight:600,color:'#5A48D6'}}>{fmtDateLong(arrive)} → {fmtDateLong(depart)} · {nights} {nights===1?'night':'nights'}</span>
+          </div>
+        )}
+      </div>
+      <div style={{padding:'0 22px 40px',display:'flex',gap:12}}>
+        <OBBack onClick={()=>setStep(0)}/>
+        <button disabled={!arrive} onClick={()=>setStep(2)} style={{flex:1,height:52,border:'none',borderRadius:16,background:arrive?'#6C5CE7':'#E3E5F0',color:arrive?'#fff':'#9092AD',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,cursor:arrive?'pointer':'default',transition:'background .15s'}}>
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+
+  if(step===2) return(
+    <div style={{position:'absolute',inset:0,background:'#FAFAFD',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'24px 22px 0'}}>
+        <OBProgress cur={2}/>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:32,color:'#16172A',marginTop:18,letterSpacing:'-0.02em',lineHeight:1.1}}>Where are you<br/>staying?</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',marginTop:7}}>Add your hotel — it becomes your anchor.</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'24px 22px',display:'flex',flexDirection:'column',gap:20}}>
+        <div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',marginBottom:9,letterSpacing:'0.08em',textTransform:'uppercase'}}>Hotel / Airbnb name</div>
+          <input type="text" value={hotelName} onChange={e=>setHotelName(e.target.value)} placeholder="e.g. Park Hyatt Tokyo"
+            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:16,padding:'15px 16px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:17,color:'#16172A',background:'#fff',outline:'none'}}/>
+        </div>
+        <div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',marginBottom:9,letterSpacing:'0.08em',textTransform:'uppercase'}}>Neighborhood</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {TOKYO_AREAS.map(a=>(
+              <button key={a} onClick={()=>setHotelArea(a===hotelArea?'':a)}
+                style={{padding:'9px 16px',borderRadius:999,border:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:14,cursor:'pointer',transition:'all .15s',
+                  background:a===hotelArea?'#6C5CE7':'#fff',color:a===hotelArea?'#fff':'#4E5072',
+                  boxShadow:a===hotelArea?'0 3px 10px rgba(108,92,231,0.35)':'0 1px 2px rgba(22,23,42,0.06)',
+                  outline:'1.5px solid '+(a===hotelArea?'transparent':'#E3E5F0')}}>
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+        {arrive&&(
+          <div style={{background:'#FFF6F1',borderRadius:14,padding:'13px 16px',display:'flex',alignItems:'center',gap:10}}>
+            <AnchorIco size={16} color="#FB7242"/>
+            <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,fontWeight:600,color:'#ED5A2A'}}>{fmtDate(arrive)} – {fmtDate(depart)} · {nights} nights</span>
+          </div>
+        )}
+        <button onClick={()=>setStep(3)} style={{border:'none',background:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',cursor:'pointer',textDecoration:'underline',textAlign:'center',padding:'4px 0'}}>Skip for now</button>
+      </div>
+      <div style={{padding:'0 22px 40px',display:'flex',gap:12}}>
+        <OBBack onClick={()=>setStep(1)}/>
+        <button onClick={()=>setStep(3)} style={{flex:1,height:52,border:'none',borderRadius:16,background:'#6C5CE7',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,cursor:'pointer'}}>
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+
+  if(step===3) return(
+    <div style={{position:'absolute',inset:0,background:'#FAFAFD',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'24px 22px 0',flexShrink:0}}>
+        <OBProgress cur={3}/>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:32,color:'#16172A',marginTop:18,letterSpacing:'-0.02em',lineHeight:1.1}}>What do you<br/>love?</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',marginTop:7,marginBottom:4}}>Pick your Tokyo vibe — we'll shape suggestions around you.</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'18px 22px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,alignContent:'start'}}>
+        {PREF_OPTS.map(p=>{
+          const on=prefs.includes(p.id);
+          const cat=CATS[p.cat]||CATS.food;
+          return(
+            <button key={p.id} onClick={()=>setPrefs(prev=>on?prev.filter(x=>x!==p.id):[...prev,p.id])}
+              style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:7,padding:'15px 14px 13px',borderRadius:18,
+                border:`2px solid ${on?'#6C5CE7':'transparent'}`,
+                background:on?'#F1EEFF':'#fff',
+                boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.06)',
+                cursor:'pointer',textAlign:'left',position:'relative',transition:'all .15s'}}>
+              <div style={{width:38,height:38,borderRadius:11,background:cat.grad,display:'flex',alignItems:'center',justifyContent:'center',fontSize:21}}>
+                {p.emoji}
+              </div>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:14,color:on?'#5A48D6':'#353756',lineHeight:1.2}}>{p.label}</span>
+              {on&&<div style={{position:'absolute',top:10,right:10}}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              </div>}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{padding:'12px 22px 40px',display:'flex',gap:12,flexShrink:0}}>
+        <OBBack onClick={()=>setStep(2)}/>
+        <button onClick={finish} style={{flex:1,height:52,border:'none',borderRadius:16,background:'linear-gradient(135deg,#6C5CE7,#FB7242)',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 8px 24px rgba(108,92,231,0.35)'}}>
+          Let's go! ✈
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
 /* ── TODAY ── */
 const segBase={border:'none',background:'transparent',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'6px 14px',borderRadius:999,cursor:'pointer',transition:'all .15s'};
 const segOn={...segBase,background:'#fff',color:'#16172A',boxShadow:'0 1px 3px rgba(22,23,42,0.14)'};
 
-function TodayScreen({layout,setLayout,push,added,setAdded}) {
+function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip}){
+  const today=todayStr();
+  const dayIndex=trip.arrivalDate?daysBetween(trip.arrivalDate,today):0;
+  const totalNights=trip.nights||4;
+  const isPreTrip=dayIndex<0;
+  const isPostTrip=dayIndex>=totalNights;
+  const viewDay=Math.max(0,Math.min(totalNights-1,dayIndex));
+  const todayAnchor=trip.anchors?.[0]||null;
+  const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
+  const suggs=useMemo(()=>getSuggestions(trip.prefs||[],2,[]),[JSON.stringify(trip.prefs)]);
+
   const dayStops=[
-    {...bp('senso'),  kind:'anchor', num:1,time:'09:30',travel:'12 min walk · along the Sumida',hasLine:true},
-    {...bp('blue'),   kind:'suggest',num:2,time:'11:30',travel:'8 min walk to the market',hasLine:true,added:!!added.blue},
-    {...bp('tsukiji'),kind:'anchor', num:3,time:'13:00',hasLine:false},
+    ...(todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',num:1,time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.',hasLine:suggs.length>0}]:[]),
+    ...suggs.map((p,i)=>({...p,kind:'suggest',num:(todayAnchor?2:1)+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id]})),
   ];
   const dayPins=[
-    {id:'senso',x:76,y:22,num:1,kind:'anchor'},
-    {id:'blue',x:64,y:45,num:2,kind:'suggest'},
-    {id:'tsukiji',x:55,y:64,num:3,kind:'anchor'},
-    {id:'you',x:40,y:70,kind:'you'},
+    ...(todayAnchor?[{id:'hotel-0',x:55,y:40,num:1,kind:'anchor',label:todayAnchor.area}]:[]),
+    ...suggs.map((p,i)=>({id:p.id,x:[32,68][i]||50,y:[62,28][i]||50,num:(todayAnchor?2:1)+i,kind:'suggest'})),
+    {id:'you',x:46,y:56,kind:'you'},
   ];
-  return (
+
+  const EditBtn=()=>(
+    <button onClick={onEditTrip} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    </button>
+  );
+
+  if(isPreTrip){
+    const daysAway=-dayIndex;
+    return(
+      <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+        <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination}</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>Coming soon</div>
+          </div>
+          <EditBtn/>
+        </div>
+        <div style={{flex:1,overflowY:'auto'}}>
+          <div style={{padding:'40px 24px 32px',textAlign:'center',background:'linear-gradient(180deg,#F1EEFF 0%,#FAFAFD 100%)'}}>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:88,color:'#6C5CE7',lineHeight:1}}>{daysAway}</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:18,color:'#353756',fontWeight:600,marginTop:4}}>{daysAway===1?'day':'days'} until Tokyo</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginTop:8}}>{trip.arrivalDate&&fmtDateLong(trip.arrivalDate)} → {trip.departureDate&&fmtDateLong(trip.departureDate)}</div>
+            <div style={{display:'inline-block',marginTop:14,background:'#fff',borderRadius:12,padding:'8px 16px',fontFamily:"'Geist Mono',monospace",fontSize:13,color:'#6C5CE7',fontWeight:600,boxShadow:'0 2px 8px rgba(22,23,42,0.08)'}}>{trip.nights} nights · {trip.anchors?.length||0} anchor{trip.anchors?.length!==1?'s':''}</div>
+          </div>
+          {trip.anchors&&trip.anchors.length>0&&(
+            <div style={{padding:'0 18px 16px'}}>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.10em',textTransform:'uppercase',marginBottom:12}}>Your anchors</div>
+              {trip.anchors.map(a=>(
+                <div key={a.id} style={{background:'linear-gradient(135deg,#9AA0FF,#6C5CE7)',borderRadius:20,padding:'16px 15px',marginBottom:10,display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{width:44,height:44,borderRadius:12,background:'rgba(255,255,255,0.18)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><AnchorIco size={22} color="#fff"/></div>
+                  <div>
+                    <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#fff',lineHeight:1.1}}>{a.name}</div>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'rgba(255,255,255,0.7)',marginTop:2}}>{a.area} · {fmtDate(a.checkin)} – {fmtDate(a.checkout)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{padding:'8px 18px 36px'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:12}}>While you wait, explore what's waiting:</div>
+            <button onClick={()=>push({type:'discover'})} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
+              <SparkleIco size={18}/> Browse Tokyo picks
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if(isPostTrip) return(
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
+      <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div>
+          <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> Tokyo wrapped ✈</div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>{trip.arrivalDate&&fmtMonthYear(trip.arrivalDate)}</div>
+        </div>
+        <EditBtn/>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'48px 24px',textAlign:'center'}}>
+        <div style={{fontSize:56,marginBottom:14}}>🎌</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:28,color:'#16172A'}}>Tokyo's a wrap!</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',marginTop:8}}>{trip.nights} nights · {trip.anchors?.length||0} anchor{trip.anchors?.length!==1?'s':''}</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginTop:4}}>{trip.arrivalDate&&fmtDateLong(trip.arrivalDate)} – {trip.departureDate&&fmtDateLong(trip.departureDate)}</div>
+        <button onClick={onEditTrip} style={{marginTop:32,background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px 28px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,cursor:'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>Plan another trip →</button>
+      </div>
+    </div>
+  );
+
+  return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',zIndex:5}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div>
-            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}>
-              <AnchorIco size={13}/> Tokyo
-            </div>
-            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:3}}>Day 2 · Old Tokyo</div>
+            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination}</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:3}}>Day {viewDay+1} · {areaLabel}</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            {['m15 18-6-6 6-6','m9 18 6-6-6-6'].map((d,i)=>(
-              <button key={i} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
-              </button>
-            ))}
-            <button onClick={()=>push({type:'trip'})} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>
-              </svg>
+            <EditBtn/>
+            <button onClick={()=>push({type:'trip'})} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
             </button>
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>
-            <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>Sun, Jun 15</span> · 3 stops
+            <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>{trip.arrivalDate&&fmtDateLong(addDays(trip.arrivalDate,viewDay))}</span> · {dayStops.length} stops
           </div>
           <div style={{display:'inline-flex',background:'#ECEDF6',borderRadius:999,padding:3}}>
             {['A','B','C'].map((l,i)=>(
@@ -469,13 +729,6 @@ function TodayScreen({layout,setLayout,push,added,setAdded}) {
         <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0}}>
           <div style={{height:250,flexShrink:0,position:'relative'}}>
             <AnchorMap pins={dayPins} connect height="250px"/>
-            <div style={{position:'absolute',left:14,bottom:14,display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.92)',backdropFilter:'blur(8px)',borderRadius:999,padding:'7px 13px 7px 9px',boxShadow:'0 4px 14px rgba(22,23,42,0.14)'}}>
-              <span style={{width:16,height:16,borderRadius:'50%',background:'#FB7242',display:'inline-flex'}}/>
-              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#353756'}}>2 anchors</span>
-              <span style={{width:5,height:5,borderRadius:'50%',background:'#D5D6E4'}}/>
-              <span style={{width:12,height:12,borderRadius:'50%',background:'#6C5CE7',display:'inline-flex'}}/>
-              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#353756'}}>1 pick</span>
-            </div>
           </div>
           <div style={{flex:1,overflowY:'auto',paddingTop:8,paddingBottom:24}}>
             <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
@@ -494,7 +747,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded}) {
               <div style={{width:40,height:5,borderRadius:999,background:'#D5D6E4',margin:'9px auto 4px'}}/>
               <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',padding:'4px 20px 6px'}}>
                 <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>Your day</span>
-                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>3h 15m · 4.2 km</span>
+                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>{dayStops.length} stops</span>
               </div>
               <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
                 onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
@@ -504,7 +757,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded}) {
       )}
       {layout==='C'&&(
         <div style={{flex:1,overflowY:'auto',padding:'14px 18px 24px'}}>
-          <div style={{borderRadius:18,overflow:'hidden',height:120,position:'relative',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',marginBottom:4}}>
+          <div style={{borderRadius:18,overflow:'hidden',height:120,position:'relative',boxShadow:'0 1px 2px rgba(22,23,42,0.06)',marginBottom:4}}>
             <AnchorMap pins={dayPins} connect height="120px"/>
           </div>
           <div style={{margin:'0 -18px'}}>
@@ -663,15 +916,15 @@ function NearScreen({push,filter,setFilter}) {
 }
 
 /* ── ANCHORS ── */
-function AnchorsScreen({push}) {
-  const total=ANCHORS_DATA.reduce((t,a)=>t+a.categories.reduce((s,c)=>s+c.placeIds.length,0),0);
-  return (
+function AnchorsScreen({push,trip}){
+  const ancCount=trip.anchoredPlaces?.length||0;
+  return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Your anchors</div>
-        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:4}}>Tokyo</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:4}}>{trip.destination}</div>
         <div style={{display:'flex',gap:7,marginTop:12}}>
-          {[{v:ANCHORS_DATA.length,l:'hotels',c:'#FB7242'},{v:TRIP.days.length,l:'days',c:'#6C5CE7'},{v:total,l:'saved',c:'#353756'}].map(({v,l,c})=>(
+          {[{v:trip.anchors?.length||0,l:'hotels',c:'#FB7242'},{v:trip.nights||0,l:'nights',c:'#6C5CE7'},{v:ancCount,l:'saved',c:'#353756'}].map(({v,l,c})=>(
             <div key={l} style={{flex:1,background:'#fff',borderRadius:16,padding:'11px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
               <div style={{fontFamily:"'Geist Mono',monospace",fontWeight:600,fontSize:21,color:c}}>{v}</div>
               <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:1}}>{l}</div>
@@ -680,7 +933,7 @@ function AnchorsScreen({push}) {
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'12px 18px 24px'}}>
-        {ANCHORS_DATA.map(a=>(
+        {trip.anchors&&trip.anchors.length>0?trip.anchors.map(a=>(
           <div key={a.id} onClick={()=>push({type:'anchor',anchorId:a.id})} style={{background:'#fff',borderRadius:22,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 8px 20px rgba(22,23,42,0.07)',cursor:'pointer',marginBottom:14}}>
             <div style={{background:'linear-gradient(135deg,#9AA0FF,#6C5CE7)',padding:'18px 16px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
               <div>
@@ -688,23 +941,51 @@ function AnchorsScreen({push}) {
                   <AnchorIco size={10} color="rgba(255,255,255,0.9)"/> HOTEL ANCHOR
                 </div>
                 <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:19,color:'#fff',lineHeight:1.1}}>{a.name}</div>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'rgba(255,255,255,0.72)',marginTop:3}}>{a.area} · {a.dates} · {a.nights} nights</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'rgba(255,255,255,0.72)',marginTop:3}}>{a.area} · {fmtDate(a.checkin)} – {fmtDate(a.checkout)}</div>
               </div>
               <ChevRight color="rgba(255,255,255,0.5)" size={20}/>
             </div>
-            <div style={{padding:'10px 14px 12px'}}>
-              {a.categories.map((cat,ci)=>(
-                <div key={cat.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:ci<a.categories.length-1?'1px solid #ECEDF6':'none'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:9}}>
-                    <div style={{width:8,height:8,borderRadius:'50%',background:'#FB7242',flexShrink:0}}/>
-                    <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,fontWeight:600,color:'#353756'}}>{cat.name}</span>
-                  </div>
-                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#9092AD'}}>{cat.placeIds.length} saved</span>
-                </div>
-              ))}
+            <div style={{padding:'12px 15px 13px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#6C6E8E'}}>Anchored places</span>
+              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#9092AD'}}>{ancCount} saved</span>
             </div>
           </div>
-        ))}
+        )):(
+          <div style={{textAlign:'center',padding:'52px 24px'}}>
+            <AnchorIco size={42} color="#D5D6E4"/>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,color:'#353756',marginTop:16}}>No hotels added yet</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',marginTop:8,lineHeight:1.5}}>Edit your trip to add hotels as anchors.</div>
+          </div>
+        )}
+        {ancCount>0&&(
+          <div style={{marginTop:8}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.10em',textTransform:'uppercase',marginBottom:12}}>All anchored places</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {(trip.anchoredPlaces||[]).map(pid=>{
+                const p=bp(pid);
+                return(
+                  <div key={pid} onClick={()=>push({type:'place',id:pid})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                    <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:p.catGrad}}/>
+                    <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4,flexWrap:'wrap'}}>
+                        <StatusPill openNow={p.openNow} small/>
+                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                      </div>
+                    </div>
+                    <ChevRight/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {ancCount===0&&trip.anchors?.length>0&&(
+          <div style={{textAlign:'center',padding:'24px',background:'#F4F5FA',borderRadius:18,marginTop:4}}>
+            <SparkleIco size={28} color="#A793FF"/>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#6C6E8E',marginTop:10,lineHeight:1.5}}>Browse Discover or Near, then tap "Anchor it" on any place you love.</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -795,126 +1076,114 @@ function SearchScreen({push}) {
 }
 
 /* ── ANCHOR DETAIL OVERLAY ── */
-function AnchorDetailOverlay({anchorId,pop,push}) {
-  const anchor=ANCHORS_DATA.find(a=>a.id===anchorId);
+function AnchorDetailOverlay({anchorId,pop,push,trip}){
+  const anchor=trip.anchors?.find(a=>a.id===anchorId);
   if(!anchor) return null;
-  return (
+  const anchored=(trip.anchoredPlaces||[]).map(pid=>bp(pid));
+  return(
     <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
       <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
         <BackBtn onClick={pop}/>
         <div>
           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>{anchor.name}</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{anchor.area} · {anchor.dates}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{anchor.area} · {fmtDate(anchor.checkin)} – {fmtDate(anchor.checkout)}</div>
         </div>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'8px 18px 32px'}}>
-        {anchor.categories.map(cat=>(
-          <div key={cat.id} style={{marginBottom:24}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,marginTop:8}}>
-              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>{cat.name}</div>
-              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#9092AD'}}>{cat.placeIds.length} places</span>
-            </div>
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {cat.placeIds.map(pid=>{
-                const p=bp(pid);
-                return (
-                  <div key={pid} onClick={()=>push({type:'place',id:pid})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
-                    <div style={{width:72,height:72,borderRadius:13,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:6}}>
-                      <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.18)',padding:'2px 6px',borderRadius:999}}>{p.catLabel}</span>
-                    </div>
-                    <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
-                      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
-                        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
-                        <BudgetBadge budget={p.budget}/>
-                      </div>
-                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
-                        <StatusPill openNow={p.openNow} small/>
-                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
-                      </div>
-                    </div>
-                    <ChevRight/>
-                  </div>
-                );
-              })}
-            </div>
+      <div style={{flex:1,overflowY:'auto',padding:'16px 18px 32px'}}>
+        {anchored.length===0?(
+          <div style={{textAlign:'center',padding:'52px 24px'}}>
+            <SparkleIco size={36} color="#D5D6E4"/>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#353756',marginTop:14}}>No places anchored yet</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginTop:8,lineHeight:1.5}}>Browse Discover or Near, then tap "Anchor it" on any place you love.</div>
           </div>
-        ))}
+        ):(
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {anchored.map(p=>(
+              <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                <div style={{width:72,height:72,borderRadius:13,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:6}}>
+                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.18)',padding:'2px 6px',borderRadius:999}}>{p.catLabel}</span>
+                </div>
+                <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4}}>
+                    <StatusPill openNow={p.openNow} small/>
+                    <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                  </div>
+                </div>
+                <ChevRight/>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /* ── TRIP OVERLAY ── */
-function TripOverlay({pop,push}) {
-  return (
+function TripOverlay({pop,push,trip}){
+  const today=todayStr();
+  const days=Array.from({length:trip.nights||0},(_,i)=>({
+    date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
+    label:`Day ${i+1}`,
+    anchor:trip.anchors?.[0],
+  }));
+  return(
     <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
       <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
         <BackBtn onClick={pop}/>
-        <div>
-          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A'}}>Tokyo · June 2026</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>4 days · 2 hotels</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A'}}>{trip.destination} · {trip.arrivalDate&&fmtMonthYear(trip.arrivalDate)}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{trip.nights} nights · {trip.anchors?.length||0} {trip.anchors?.length===1?'hotel':'hotels'}</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'12px 18px 32px'}}>
-        {/* Flights */}
-        {TRIP.flights.map((f,i)=>(
-          <div key={i} style={{display:'flex',gap:14,alignItems:'center',padding:'13px 0',borderBottom:'1px solid #ECEDF6'}}>
-            <div style={{width:42,height:42,borderRadius:12,background:f.dir==='arrive'?'#D6F5E6':'#FEE0E6',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                stroke={f.dir==='arrive'?'#14A06E':'#F23E63'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                style={{transform:f.dir==='arrive'?'rotate(-45deg)':'rotate(45deg)'}}>
-                <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L8 10 .8 8.2l6.3-3.7c1.2-.7 2.5-1.1 3.9-1.1H14l1.5-1.5A5.5 5.5 0 0 1 23 9v3l-5.2 7.2z"/>
-              </svg>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:12,color:f.dir==='arrive'?'#0E865B':'#D72850',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{f.dir==='arrive'?'Arriving':'Departing'}</div>
-              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{f.label}</div>
-              <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E',marginTop:2}}>{f.time}</div>
-            </div>
-          </div>
-        ))}
-        {/* Days */}
-        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Days</div>
-        {TRIP.days.map((day,i)=>(
-          <div key={i} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:day.active?'2px solid #6C5CE7':'2px solid transparent'}}>
-            <div style={{padding:'13px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',background:day.active?'#F1EEFF':'transparent'}}>
-              <div>
-                <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
-                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:day.active?'#6C5CE7':'#9092AD',background:day.active?'#E4DEFF':'#ECEDF6',padding:'2px 8px',borderRadius:999}}>{day.label}</span>
-                  {day.active&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Today</span>}
+        {trip.anchors&&trip.anchors.length>0&&(
+          <>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'6px 0 10px'}}>Hotels</div>
+            {trip.anchors.map(a=>(
+              <div key={a.id} style={{display:'flex',gap:14,alignItems:'center',padding:'13px 0',borderBottom:'1px solid #ECEDF6'}}>
+                <div style={{width:42,height:42,borderRadius:12,background:'linear-gradient(135deg,#9AA0FF,#6C5CE7)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <AnchorIco size={20} color="#fff"/>
                 </div>
-                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>{day.date}</div>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{day.hotel}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{a.name}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:2}}>{a.area} · {fmtDate(a.checkin)} – {fmtDate(a.checkout)}</div>
+                </div>
               </div>
-              <ChevRight/>
+            ))}
+          </>
+        )}
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Days</div>
+        {days.map((day,i)=>{
+          const isToday=day.date===today;
+          return(
+            <div key={i} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:isToday?'2px solid #6C5CE7':'2px solid transparent'}}>
+              <div style={{padding:'13px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',background:isToday?'#F1EEFF':'transparent'}}>
+                <div>
+                  <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
+                    <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:isToday?'#6C5CE7':'#9092AD',background:isToday?'#E4DEFF':'#ECEDF6',padding:'2px 8px',borderRadius:999}}>{day.label}</span>
+                    {isToday&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Today</span>}
+                  </div>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>{day.date?fmtDateLong(day.date):''}</div>
+                  {day.anchor&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{day.anchor.name}</div>}
+                </div>
+                <ChevRight/>
+              </div>
             </div>
-            {day.placeIds.length>0&&(
-              <div style={{padding:'9px 14px 11px',display:'flex',gap:7,flexWrap:'wrap',borderTop:'1px solid #ECEDF6'}}>
-                {day.placeIds.map(pid=>{
-                  const p=bp(pid);
-                  return (
-                    <div key={pid} onClick={e=>{e.stopPropagation();push({type:'place',id:pid})}}
-                      style={{display:'inline-flex',alignItems:'center',gap:5,background:'#F4F5FA',borderRadius:999,padding:'5px 10px',cursor:'pointer'}}>
-                      <div style={{width:7,height:7,borderRadius:'50%',background:'#FB7242'}}/>
-                      <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#353756'}}>{p.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 /* ── PLACE DETAIL ── */
-function PlaceDetailOverlay({id,pop,push}) {
+function PlaceDetailOverlay({id,pop,push,trip,onAnchorPlace}) {
   const [note,setNote]=useState('');
   const d=bp(id);
-  const isAnc=ANCHOR_IDS.includes(id);
+  const isAnc=(trip?.anchoredPlaces||[]).includes(id);
   const pairs=(PAIRS[id]||['blue','nonbei']).map(bp);
   const s=sc(d.openNow);
   const detailPins=[{id:d.id,x:52,y:46,kind:isAnc?'anchor':'suggest',big:true,label:d.area}];
@@ -1013,9 +1282,9 @@ function PlaceDetailOverlay({id,pop,push}) {
       </div>
 
       <div style={{position:'sticky',bottom:0,display:'flex',gap:10,padding:'12px 18px 28px',background:'linear-gradient(180deg,rgba(250,250,253,0) 0%,#FAFAFD 28%)'}}>
-        <button style={{flex:1,border:'none',background:'#6C5CE7',color:'#fff',fontWeight:600,fontSize:15,padding:14,borderRadius:15,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-          {isAnc?'Anchored':'Anchor it'}
+        <button onClick={()=>onAnchorPlace&&onAnchorPlace(id)} style={{flex:1,border:isAnc?'1.5px solid #E4DEFF':'none',background:isAnc?'#F1EEFF':'#6C5CE7',color:isAnc?'#5A48D6':'#fff',fontWeight:600,fontSize:15,padding:14,borderRadius:15,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:isAnc?'none':'0 6px 18px rgba(108,92,231,0.30)'}}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          {isAnc?'Anchored ✓':'Anchor it'}
         </button>
         <button style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#4E5072',fontWeight:600,fontSize:15,padding:'14px 18px',borderRadius:15,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:7}}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1058,7 +1327,9 @@ function BottomNav({tab,setTab}) {
 }
 
 /* ── APP ── */
-function App() {
+function App(){
+  const [trip,setTrip]=useState(()=>loadState());
+  const [editingTrip,setEditingTrip]=useState(false);
   const [tab,setTab]=useState('today');
   const [layout,setLayout]=useState('A');
   const [filter,setFilter]=useState('all');
@@ -1070,18 +1341,34 @@ function App() {
   const top=stack[stack.length-1];
   const changeTab=t=>{setTab(t);setStack([]);};
 
-  return (
+  const handleTripComplete=t=>{saveState(t);setTrip(t);setEditingTrip(false);};
+  const handleAnchorPlace=id=>{
+    const ap=trip?.anchoredPlaces||[];
+    const newAp=ap.includes(id)?ap.filter(x=>x!==id):[...ap,id];
+    const newTrip={...trip,anchoredPlaces:newAp};
+    saveState(newTrip);setTrip(newTrip);
+  };
+
+  if(!trip||editingTrip) return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded}/>}
+        <OnboardingFlow onComplete={handleTripComplete} initialData={editingTrip?trip:null}/>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
+      <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)}/>}
         {tab==='discover' &&<DiscoverScreen push={push}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter}/>}
-        {tab==='anchors'  &&<AnchorsScreen push={push}/>}
+        {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip}/>}
         {tab==='search'   &&<SearchScreen push={push}/>}
 
-        {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id}        id={top.id}        pop={pop} push={push}/>}
-        {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push}/>}
-        {top&&top.type==='trip'   &&<TripOverlay                            pop={pop} push={push}/>}
+        {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace}/>}
+        {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
+        {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip}/>}
       </div>
       {stack.length===0&&<BottomNav tab={tab} setTab={changeTab}/>}
     </div>
