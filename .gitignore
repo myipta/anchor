@@ -6,3 +6,8 @@ vendor/package-lock.json
 .dev.vars
 .wrangler/
 node_modules/
+
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
