@@ -17,6 +17,7 @@ export async function onRequest(context) {
       anthropic: Boolean(env.ANTHROPIC_API_KEY),
     },
     suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+    chatModel: env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     time: new Date().toISOString(),
   });
 }

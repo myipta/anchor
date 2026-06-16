@@ -11,11 +11,13 @@
 import { onRequest as health } from './functions/api/health.js';
 import { onRequest as suggest } from './functions/api/suggest.js';
 import { onRequest as places } from './functions/api/places.js';
+import { onRequest as chat } from './functions/api/chat.js';
 
 const ROUTES = {
   '/api/health': health,
   '/api/suggest': suggest,
   '/api/places': places,
+  '/api/chat': chat,
 };
 
 export default {

@@ -20,6 +20,7 @@ body{font-family:'Hanken Grotesk',sans-serif;background:#DDE0EB;display:flex;jus
 button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
 input,textarea{font-family:'Hanken Grotesk',sans-serif}
 @keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes anchorBlink{0%,100%{opacity:.3}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){@keyframes slideIn{from{transform:none}to{transform:none}}}
 </style>
 </head>
@@ -446,6 +447,127 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* ── CHAT ONBOARDING ── */
+function draftToInit(d){
+  return {
+    arrivalDate:d.arrivalDate||'',
+    nights:d.nights||4,
+    prefs:d.prefs||[],
+    anchors:d.hotelName?[{id:'anc-0',name:d.hotelName,area:d.hotelArea||'Tokyo',checkin:d.arrivalDate||todayStr(),checkout:''}]:[],
+    anchoredPlaces:[],
+  };
+}
+
+function DraftPill({children}){
+  return <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.14)',color:'#fff',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>{children}</span>;
+}
+
+function ChatOnboarding({onComplete,onSkip}){
+  const [messages,setMessages]=useState([{role:'assistant',content:"Hey — I'm Anchor. 🗼 I'll help you shape your Tokyo trip. To start: when are you thinking of going?"}]);
+  const [draft,setDraft]=useState({});
+  const [input,setInput]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [chips,setChips]=useState(['Next month','This summer','Not sure yet']);
+  const [ready,setReady]=useState(false);
+  const [error,setError]=useState(null);
+  const scrollRef=React.useRef(null);
+  useEffect(()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;},[messages,loading,error]);
+
+  const hasDraft=draft.arrivalDate||draft.hotelName||(draft.prefs&&draft.prefs.length);
+
+  const send=async(text)=>{
+    const t=(text!=null?text:input).trim();
+    if(!t||loading) return;
+    setInput(''); setChips([]); setError(null);
+    const next=[...messages,{role:'user',content:t}];
+    setMessages(next); setLoading(true);
+    try{
+      const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({messages:next.map(m=>({role:m.role,content:m.content})),trip:draft})});
+      const d=await r.json();
+      if(!r.ok){setLoading(false);setError(d.message||'Anchor had trouble responding.');return;}
+      const merged={...draft},u=d.updates||{};
+      if(u.arrivalDate) merged.arrivalDate=u.arrivalDate;
+      if(u.nights) merged.nights=u.nights;
+      if(u.hotelName) merged.hotelName=u.hotelName;
+      if(u.hotelArea) merged.hotelArea=u.hotelArea;
+      if(u.prefs&&u.prefs.length) merged.prefs=[...new Set([...(draft.prefs||[]),...u.prefs])];
+      setDraft(merged);
+      setMessages(m=>[...m,{role:'assistant',content:d.reply}]);
+      setChips(d.chips||[]);
+      setReady(Boolean(d.ready)&&!!merged.arrivalDate);
+      setLoading(false);
+    }catch(e){setLoading(false);setError('Could not reach Anchor. Check your connection.');}
+  };
+
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:'#FAFAFD'}}>
+      <div style={{flexShrink:0,background:'linear-gradient(160deg,#1A1040,#2D1B69)',padding:'16px 18px 14px'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'center',gap:9}}>
+            <AnchorIco size={20} color="#FB7242"/>
+            <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:20,color:'#fff'}}>Plan with Anchor</span>
+          </div>
+          <button onClick={onSkip} style={{border:'none',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:12.5,padding:'6px 12px',borderRadius:999,cursor:'pointer'}}>Skip</button>
+        </div>
+        {hasDraft&&(
+          <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:12}}>
+            {draft.arrivalDate&&<DraftPill>📅 {fmtDate(draft.arrivalDate)} · {draft.nights||'?'} nights</DraftPill>}
+            {draft.hotelName&&<DraftPill>🏨 {draft.hotelName}{draft.hotelArea?' · '+draft.hotelArea:''}</DraftPill>}
+            {draft.prefs&&draft.prefs.length>0&&<DraftPill>{draft.prefs.slice(0,5).map(id=>((PREF_OPTS.find(p=>p.id===id)||{}).emoji)||'•').join(' ')} {draft.prefs.length} vibes</DraftPill>}
+          </div>
+        )}
+      </div>
+
+      <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'18px 16px',display:'flex',flexDirection:'column',gap:12}}>
+        {messages.map((m,i)=>(
+          <div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
+            <div style={{maxWidth:'82%',padding:'11px 14px',borderRadius:m.role==='user'?'18px 18px 4px 18px':'18px 18px 18px 4px',
+              background:m.role==='user'?'#6C5CE7':'#fff',color:m.role==='user'?'#fff':'#16172A',
+              fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,lineHeight:1.45,
+              boxShadow:m.role==='user'?'0 4px 12px rgba(108,92,231,0.28)':'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.06)'}}>{m.content}</div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:'flex',justifyContent:'flex-start'}}>
+            <div style={{padding:'13px 16px',borderRadius:'18px 18px 18px 4px',background:'#fff',boxShadow:'0 1px 2px rgba(22,23,42,0.06)',display:'flex',gap:5}}>
+              {[0,1,2].map(n=><span key={n} style={{width:7,height:7,borderRadius:'50%',background:'#C0C2D4',animation:`anchorBlink 1s ${n*0.18}s infinite`}}/>)}
+            </div>
+          </div>
+        )}
+        {error&&(
+          <div style={{background:'#FFF1EA',borderRadius:14,padding:'12px 14px',textAlign:'center'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#8a4a2c',lineHeight:1.45}}>{error}</div>
+            <button onClick={onSkip} style={{marginTop:8,border:'none',background:'#FB7242',color:'#fff',fontWeight:600,fontSize:13.5,padding:'8px 16px',borderRadius:10,cursor:'pointer'}}>Set up manually →</button>
+          </div>
+        )}
+      </div>
+
+      <div style={{flexShrink:0,padding:'10px 14px 22px',background:'#FAFAFD',borderTop:'1px solid #ECEDF6'}}>
+        {ready&&(
+          <button onClick={()=>onComplete(draft)} style={{width:'100%',marginBottom:10,border:'none',borderRadius:14,background:'linear-gradient(135deg,#6C5CE7,#FB7242)',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,padding:'13px',cursor:'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.32)'}}>Review &amp; finish setup →</button>
+        )}
+        {chips.length>0&&!loading&&(
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
+            {chips.map((c,i)=>(
+              <button key={i} onClick={()=>send(c)} style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#4E5072',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,padding:'8px 13px',borderRadius:999,cursor:'pointer'}}>{c}</button>
+            ))}
+          </div>
+        )}
+        <div style={{display:'flex',gap:9,alignItems:'center'}}>
+          <input value={input} onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();send();}}}
+            placeholder="Message Anchor…"
+            style={{flex:1,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'13px 15px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+          <button onClick={()=>send()} disabled={!input.trim()||loading} style={{width:48,height:48,flexShrink:0,borderRadius:14,border:'none',background:input.trim()&&!loading?'#6C5CE7':'#E3E5F0',cursor:input.trim()&&!loading?'pointer':'default',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1471,6 +1593,8 @@ function BottomNav({tab,setTab}) {
 function App(){
   const [trip,setTrip]=useState(()=>loadState());
   const [editingTrip,setEditingTrip]=useState(false);
+  const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form'
+  const [formInit,setFormInit]=useState(null);
   const [tab,setTab]=useState('today');
   const [layout,setLayout]=useState('A');
   const [filter,setFilter]=useState('all');
@@ -1482,7 +1606,7 @@ function App(){
   const top=stack[stack.length-1];
   const changeTab=t=>{setTab(t);setStack([]);};
 
-  const handleTripComplete=t=>{saveState(t);setTrip(t);setEditingTrip(false);};
+  const handleTripComplete=t=>{saveState(t);setTrip(t);setEditingTrip(false);setOnbPhase('chat');setFormInit(null);};
   const handleAnchorPlace=id=>{
     const ap=trip?.anchoredPlaces||[];
     const newAp=ap.includes(id)?ap.filter(x=>x!==id):[...ap,id];
@@ -1493,7 +1617,11 @@ function App(){
   if(!trip||editingTrip) return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        <OnboardingFlow onComplete={handleTripComplete} initialData={editingTrip?trip:null}/>
+        {!trip&&!editingTrip&&onbPhase==='chat'
+          ? <ChatOnboarding
+              onComplete={d=>{setFormInit(draftToInit(d));setOnbPhase('form');}}
+              onSkip={()=>{setFormInit(null);setOnbPhase('form');}}/>
+          : <OnboardingFlow onComplete={handleTripComplete} initialData={editingTrip?trip:formInit}/>}
       </div>
     </div>
   );
