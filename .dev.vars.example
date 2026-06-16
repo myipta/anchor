@@ -5,6 +5,16 @@
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_PLACES_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXX
 
+# Accounts + login email (Resend). EMAIL_FROM can start as the no-setup
+# onboarding sender below (delivers only to your own Resend account email);
+# switch to login@mattyip.dev once the domain is verified in Resend.
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+EMAIL_FROM=Anchor <onboarding@resend.dev>
+
+# DEV ONLY: returns the 6-digit login code in the API response (and shows it in
+# the UI) so you can sign in locally without sending email. NEVER set in prod.
+DEV_AUTH=1
+
 # Optional overrides:
 # DEEPSEEK_MODEL=deepseek-v4-pro
 # ANTHROPIC_API_KEY=sk-ant-...   # reserved for the future chat/plan endpoints
