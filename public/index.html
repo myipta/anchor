@@ -173,7 +173,51 @@ const API={
       return d; // {name, query, area, note, source}
     }catch{return {error:'network'};}
   },
+  async optimize(date,hotelArea,stops){
+    try{
+      const r=await fetch('/api/optimize',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({date,hotelArea,stops})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message};
+      return d; // {ordered:[{id,time}], rationale}
+    }catch{return {error:'network',message:'Could not reach Anchor.'};}
+  },
 };
+
+/* ── ITINERARY ── */
+function tripDays(trip){
+  const n=trip.nights||0;
+  return Array.from({length:n},(_,i)=>({index:i,date:trip.arrivalDate?addDays(trip.arrivalDate,i):''}));
+}
+function dayStopsRefs(trip,dayIndex){
+  const it=trip.itinerary||{};
+  return Array.isArray(it[dayIndex])?it[dayIndex]:[];
+}
+function scratchById(trip,id){ return (trip.scratchpad||[]).find(s=>s.id===id); }
+function resolveStop(trip,ref){
+  if(ref.kind==='curated'&&PLACES[ref.id]){
+    const p=bp(ref.id);
+    return {kind:'curated',id:ref.id,time:ref.time,name:p.name,area:p.area,catGrad:p.catGrad,catLabel:p.catLabel,
+      rating:p.rating,tabelogRating:p.tabelogRating,budget:p.budget,openNow:p.openNow,hours:p.hours,coords:p.coords,
+      category:p.catLabel,note:p.note||p.reason,station:p.station};
+  }
+  const s=scratchById(trip,ref.id);
+  if(s) return {kind:'scratch',id:ref.id,time:ref.time,name:s.name,area:s.area,
+    catGrad:'linear-gradient(135deg,#5BD6B0,#8B72FB)',catLabel:s.category||'Place',
+    rating:s.rating,tabelogRating:null,budget:s.budget,openNow:s.openNow,hours:s.hours,coords:s.coords,
+    category:s.category,note:s.note,googleUrl:s.googleUrl};
+  return null;
+}
+function isScheduled(trip,kind,id){
+  const it=trip.itinerary||{};
+  return Object.values(it).some(arr=>Array.isArray(arr)&&arr.some(r=>r.kind===kind&&r.id===id));
+}
+function unscheduledPool(trip){
+  const pool=[];
+  (trip.anchoredPlaces||[]).forEach(id=>{ if(!isScheduled(trip,'curated',id)) pool.push({kind:'curated',id}); });
+  (trip.scratchpad||[]).forEach(s=>{ if(!isScheduled(trip,'scratch',s.id)) pool.push({kind:'scratch',id:s.id}); });
+  return pool;
+}
 
 function bp(id) {
   const p=PLACES[id], c=CATS[p.cat]||CATS.nbhd;
@@ -775,13 +819,17 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
   const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
   const active=!isPreTrip&&!isPostTrip;
 
+  // A planned itinerary for this day takes over from the AI suggestions.
+  const planned=active?dayStopsRefs(trip,viewDay).map(r=>resolveStop(trip,r)).filter(Boolean):[];
+  const usePlan=planned.length>0;
+
   // Static candidate pool; Claude ranks it and writes the per-traveler reasons.
   const pool=useMemo(()=>getSuggestions(trip.prefs||[],8,[]),[JSON.stringify(trip.prefs)]);
   const [ai,setAi]=useState(null);        // [{id,reason}] top AI picks, or null
   const [aiLoading,setAiLoading]=useState(false);
   const prefsKey=JSON.stringify(trip.prefs||[]);
   useEffect(()=>{
-    if(!active){return;}
+    if(!active||usePlan){return;}
     let dead=false; setAiLoading(true);
     API.suggest(trip.prefs||[],pool).then(ranked=>{
       if(dead) return;
@@ -789,19 +837,22 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
       setAi(ranked?ranked.slice(0,2).map(r=>({id:r.id,reason:r.reason})).filter(x=>PLACES[x.id]):null);
     });
     return ()=>{dead=true;};
-  },[active,prefsKey]); // eslint-disable-line
+  },[active,usePlan,prefsKey]); // eslint-disable-line
 
   const suggs=(ai&&ai.length)
     ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
     : pool.slice(0,2);
 
-  const dayStops=[
-    ...(todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',num:1,time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.',hasLine:suggs.length>0}]:[]),
-    ...suggs.map((p,i)=>({...p,kind:'suggest',num:(todayAnchor?2:1)+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading})),
-  ];
+  const hotelStop=todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',num:1,time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.',hasLine:(usePlan?planned.length:suggs.length)>0}]:[];
+  const base=todayAnchor?1:0;
+  const dayStops=usePlan
+    ? [...hotelStop, ...planned.map((p,i)=>({...p,kind:'anchor',num:base+1+i,time:p.time||'—',hasLine:i<planned.length-1,note:p.note||p.hours||'Planned stop'}))]
+    : [...hotelStop, ...suggs.map((p,i)=>({...p,kind:'suggest',num:base+1+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading}))];
+  const PINPOS=[[32,60],[68,30],[50,72],[72,55],[30,38],[55,46]];
+  const mapItems=usePlan?planned:suggs;
   const dayPins=[
     ...(todayAnchor?[{id:'hotel-0',x:55,y:40,num:1,kind:'anchor',label:todayAnchor.area}]:[]),
-    ...suggs.map((p,i)=>({id:p.id,x:[32,68][i]||50,y:[62,28][i]||50,num:(todayAnchor?2:1)+i,kind:'suggest'})),
+    ...mapItems.map((p,i)=>({id:p.id,x:(PINPOS[i]||[50,50])[0],y:(PINPOS[i]||[50,50])[1],num:base+1+i,kind:usePlan?'anchor':'suggest'})),
     {id:'you',x:46,y:56,kind:'you'},
   ];
 
@@ -906,7 +957,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
             <AnchorMap pins={dayPins} connect height="250px"/>
           </div>
           <div style={{flex:1,overflowY:'auto',paddingTop:8,paddingBottom:24}}>
-            <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+            <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
               onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
           </div>
         </div>
@@ -924,7 +975,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
                 <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>Your day</span>
                 <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>{dayStops.length} stops</span>
               </div>
-              <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+              <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
                 onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
             </div>
           </div>
@@ -936,7 +987,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
             <AnchorMap pins={dayPins} connect height="120px"/>
           </div>
           <div style={{margin:'0 -18px'}}>
-            <Timeline stops={dayStops} onOpen={id=>push({type:'place',id})}
+            <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
               onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
           </div>
         </div>
@@ -1440,8 +1491,9 @@ function TripOverlay({pop,push,trip}){
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Days</div>
         {days.map((day,i)=>{
           const isToday=day.date===today;
+          const nStops=dayStopsRefs(trip,i).length;
           return(
-            <div key={i} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:isToday?'2px solid #6C5CE7':'2px solid transparent'}}>
+            <div key={i} onClick={()=>push({type:'day',dayIndex:i})} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:isToday?'2px solid #6C5CE7':'2px solid transparent',cursor:'pointer'}}>
               <div style={{padding:'13px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',background:isToday?'#F1EEFF':'transparent'}}>
                 <div>
                   <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
@@ -1449,7 +1501,7 @@ function TripOverlay({pop,push,trip}){
                     {isToday&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Today</span>}
                   </div>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>{day.date?fmtDateLong(day.date):''}</div>
-                  {day.anchor&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{day.anchor.name}</div>}
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{nStops>0?`${nStops} ${nStops===1?'stop':'stops'} planned`:'Tap to plan'}{day.anchor?` · ${day.anchor.name}`:''}</div>
                 </div>
                 <ChevRight/>
               </div>
@@ -1576,6 +1628,113 @@ function ScratchpadOverlay({pop,trip,onAdd,onAnchor,onRemove}){
         ):(
           <div style={{display:'flex',flexDirection:'column',gap:11}}>
             {items.map(it=><ScratchCard key={it.id} item={it} onAnchor={onAnchor} onRemove={onRemove}/>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── DAY PLAN ── */
+function DayPlanOverlay({dayIndex,pop,push,trip,onAdd,onRemove,onMove,onOptimized}){
+  const day=tripDays(trip)[dayIndex]||{index:dayIndex,date:''};
+  const hotel=trip.anchors?.[0];
+  const refs=dayStopsRefs(trip,dayIndex);
+  const stops=refs.map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
+  const pool=unscheduledPool(trip).map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
+  const [opt,setOpt]=useState({loading:false,rationale:'',err:null});
+
+  const optimize=async()=>{
+    if(stops.length<2||opt.loading) return;
+    setOpt({loading:true,rationale:'',err:null});
+    const payload=stops.map(({ref,d})=>({id:`${ref.kind}:${ref.id}`,name:d.name,area:d.area,category:d.category||'',coords:d.coords||'',hours:d.hours||'',openNow:d.openNow||''}));
+    const data=await API.optimize(day.date,hotel?.area||'',payload);
+    if(data.error){setOpt({loading:false,rationale:'',err:data.message||'Optimize failed.'});return;}
+    const byKey={}; stops.forEach(({ref})=>{byKey[`${ref.kind}:${ref.id}`]=ref;});
+    const ordered=(data.ordered||[]).map(o=>{const ref=byKey[o.id];return ref?{kind:ref.kind,id:ref.id,time:o.time||''}:null;}).filter(Boolean);
+    if(ordered.length){onOptimized(dayIndex,ordered);setOpt({loading:false,rationale:data.rationale||'',err:null});}
+    else setOpt({loading:false,rationale:'',err:'Couldn’t optimize — try again.'});
+  };
+
+  return(
+    <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Day {dayIndex+1} · plan</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{day.date?fmtDateLong(day.date):''}{hotel?` · ${hotel.area}`:''}</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'14px 18px 28px'}}>
+        {stops.length>=2&&(
+          <button onClick={optimize} disabled={opt.loading} style={{width:'100%',marginBottom:14,border:'none',borderRadius:14,background:'linear-gradient(135deg,#6C5CE7,#FB7242)',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,padding:'13px',cursor:opt.loading?'default':'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.3)',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            <SparkleIco size={17}/> {opt.loading?'Anchor is arranging your day…':'Optimize this day for me'}
+          </button>
+        )}
+        {opt.rationale&&(
+          <div style={{display:'flex',gap:8,background:'#F1EEFF',borderRadius:12,padding:'11px 13px',marginBottom:14}}>
+            <SparkleIco size={15} color="#6C5CE7"/>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.45}}>{opt.rationale}</div>
+          </div>
+        )}
+        {opt.err&&<div style={{background:'#FFF1EA',borderRadius:12,padding:'10px 13px',marginBottom:14,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#8a4a2c'}}>{opt.err}</div>}
+
+        {stops.length===0?(
+          <div style={{textAlign:'center',padding:'24px'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#9092AD',lineHeight:1.5}}>No stops yet. Add places below, then let Anchor arrange them.</div>
+          </div>
+        ):(
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {stops.map(({ref,d},i)=>(
+              <div key={ref.kind+ref.id} style={{display:'flex',gap:11,alignItems:'stretch'}}>
+                <div style={{width:50,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',paddingTop:13}}>
+                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:13,fontWeight:600,color:'#6C5CE7'}}>{d.time||'—'}</span>
+                </div>
+                <div style={{flex:1,minWidth:0,background:'#fff',borderRadius:16,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)'}}>
+                  <div style={{display:'flex',gap:11,alignItems:'center'}}>
+                    <div onClick={()=>ref.kind==='curated'&&push({type:'place',id:ref.id})} style={{width:42,height:42,borderRadius:11,flexShrink:0,background:d.catGrad,cursor:ref.kind==='curated'?'pointer':'default'}}/>
+                    <div style={{flex:1,minWidth:0}} onClick={()=>ref.kind==='curated'&&push({type:'place',id:ref.id})}>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1,cursor:ref.kind==='curated'?'pointer':'default'}}>{d.name}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4,flexWrap:'wrap'}}>
+                        <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{d.area}</span>
+                        {d.openNow&&<StatusPill openNow={d.openNow} small/>}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:3,flexShrink:0}}>
+                      <button onClick={()=>onMove(dayIndex,i,-1)} disabled={i===0} style={{width:30,height:26,borderRadius:8,border:'1px solid #E3E5F0',background:'#fff',cursor:i===0?'default':'pointer',opacity:i===0?0.4:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                      </button>
+                      <button onClick={()=>onMove(dayIndex,i,1)} disabled={i===stops.length-1} style={{width:30,height:26,borderRadius:8,border:'1px solid #E3E5F0',background:'#fff',cursor:i===stops.length-1?'default':'pointer',opacity:i===stops.length-1?0.4:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                    </div>
+                    <button onClick={()=>onRemove(dayIndex,i)} style={{width:30,height:30,borderRadius:8,border:'none',background:'transparent',color:'#C0C2D4',cursor:'pointer',fontSize:18,lineHeight:1,flexShrink:0}}>×</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.1em',textTransform:'uppercase',margin:'22px 0 10px'}}>Add to this day</div>
+        {pool.length===0?(
+          <div style={{background:'#F4F5FA',borderRadius:14,padding:'16px',textAlign:'center'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#6C6E8E',lineHeight:1.5}}>Everything you've saved is scheduled. Anchor a place or add to your scratchpad to plan more.</div>
+          </div>
+        ):(
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {pool.map(({ref,d})=>(
+              <div key={ref.kind+ref.id} onClick={()=>onAdd(dayIndex,ref)} style={{display:'flex',gap:11,alignItems:'center',background:'#fff',borderRadius:14,padding:'10px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                <div style={{width:38,height:38,borderRadius:10,flexShrink:0,background:d.catGrad}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14.5,color:'#16172A',lineHeight:1.1}}>{d.name}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{d.area}{ref.kind==='scratch'?' · from scratchpad':''}</div>
+                </div>
+                <div style={{width:30,height:30,borderRadius:9,background:'#F1EEFF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1760,6 +1919,25 @@ function App(){
   const removeScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).filter(s=>s.id!==id)});
   const scratchCount=(trip?.scratchpad||[]).length;
 
+  const addToDay=(dayIndex,ref)=>{
+    const it={...(trip.itinerary||{})};
+    const arr=Array.isArray(it[dayIndex])?[...it[dayIndex]]:[];
+    if(!arr.some(r=>r.kind===ref.kind&&r.id===ref.id)) arr.push({kind:ref.kind,id:ref.id});
+    it[dayIndex]=arr; persist({...trip,itinerary:it});
+  };
+  const removeFromDay=(dayIndex,idx)=>{
+    const it={...(trip.itinerary||{})}; const arr=[...(it[dayIndex]||[])]; arr.splice(idx,1);
+    it[dayIndex]=arr; persist({...trip,itinerary:it});
+  };
+  const moveInDay=(dayIndex,idx,dir)=>{
+    const it={...(trip.itinerary||{})}; const arr=[...(it[dayIndex]||[])]; const j=idx+dir;
+    if(j<0||j>=arr.length) return; [arr[idx],arr[j]]=[arr[j],arr[idx]];
+    it[dayIndex]=arr; persist({...trip,itinerary:it});
+  };
+  const applyOptimized=(dayIndex,ordered)=>{
+    const it={...(trip.itinerary||{})}; it[dayIndex]=ordered; persist({...trip,itinerary:it});
+  };
+
   if(!trip||editingTrip) return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
@@ -1785,6 +1963,7 @@ function App(){
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
+        {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}
 
         {stack.length===0&&(
           <button onClick={()=>push({type:'scratch'})} aria-label="Scratchpad" style={{position:'absolute',right:16,bottom:18,zIndex:25,width:56,height:56,borderRadius:18,border:'none',background:'linear-gradient(135deg,#FB7242,#F857A6)',boxShadow:'0 8px 22px rgba(251,114,66,0.45)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>

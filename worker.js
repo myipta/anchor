@@ -13,6 +13,7 @@ import { onRequest as suggest } from './functions/api/suggest.js';
 import { onRequest as places } from './functions/api/places.js';
 import { onRequest as chat } from './functions/api/chat.js';
 import { onRequest as parsePlace } from './functions/api/parse-place.js';
+import { onRequest as optimize } from './functions/api/optimize.js';
 
 const ROUTES = {
   '/api/health': health,
@@ -20,6 +21,7 @@ const ROUTES = {
   '/api/places': places,
   '/api/chat': chat,
   '/api/parse-place': parsePlace,
+  '/api/optimize': optimize,
 };
 
 export default {
