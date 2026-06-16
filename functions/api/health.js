@@ -18,7 +18,7 @@ export async function onRequest(context) {
       googlePlaces: Boolean(env.GOOGLE_PLACES_API_KEY),
       anthropic: Boolean(env.ANTHROPIC_API_KEY),
     },
-    suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+    suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
     chatModel: env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     time: new Date().toISOString(),
   };
@@ -33,7 +33,7 @@ export async function onRequest(context) {
 // Minimal live DeepSeek call to surface the real failure reason.
 async function probeDeepseek(env) {
   if (!env.DEEPSEEK_API_KEY) return { configured: false, message: 'DEEPSEEK_API_KEY is not set' };
-  const model = env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
   const t0 = Date.now();
   let r;
   try {

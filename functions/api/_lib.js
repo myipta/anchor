@@ -38,7 +38,7 @@ export function extractJson(text) {
 // { text, model } on success or { error, status, detail } on failure.
 // Used for the cheap/fast "Haiku-tier" work. Key: DEEPSEEK_API_KEY.
 export async function callDeepSeek(env, { system, user, maxTokens = 1024, json: wantJson = false }) {
-  const model = env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: user });
