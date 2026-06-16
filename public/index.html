@@ -1431,6 +1431,20 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
 }
 
 /* ── DISCOVER TRAINING CHAT ── */
+/* Offline fallback for the training chat when /api/refine (DeepSeek) is unavailable:
+   pull a short tag out of the message and decide like vs dislike from the wording. */
+function localTaste(message){
+  const m=' '+message.toLowerCase()+' ';
+  const neg=/\b(no|not|hate|avoid|don'?t|dislike|skip|without|less|nope|never)\b/.test(m);
+  const tag=message
+    .replace(/\b(i|i'?m|really|love|like|want|prefer|enjoy|into|more|some|a|an|the|of|to|please|no|not|hate|avoid|don'?t|dislike|skip|without|less|my|me|we|you|tokyo|places?|spots?|and|or|with|for|that|are|is|too|very)\b/gi,' ')
+    .replace(/[^a-zA-Z\s&-]/g,' ').replace(/\s+/g,' ').trim().toLowerCase().split(' ').filter(Boolean).slice(0,3).join(' ');
+  if(!tag) return {reply:"Got it — tell me a cuisine, vibe or setting and I'll tune your feed.",add_likes:[],add_dislikes:[],local:true};
+  return neg
+    ? {reply:`Noted — I'll steer your feed away from ${tag}.`,add_likes:[],add_dislikes:[tag],local:true}
+    : {reply:`Love it — I'll lean your feed into ${tag}.`,add_likes:[tag],add_dislikes:[],local:true};
+}
+
 function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste,onOptimize,optimizing}){
   const taste=trip.taste||{likes:[],dislikes:[]};
   const likes=taste.likes||[], dislikes=taste.dislikes||[];
@@ -1443,9 +1457,10 @@ function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste,onOptimize,optimizi
     const text=(preset||input).trim(); if(!text||busy) return;
     const history=msgs.slice(-6).map(m=>({role:m.role==='user'?'user':'anchor',text:m.text}));
     setMsgs(m=>[...m,{role:'user',text}]); setInput(''); setBusy(true);
-    const res=await API.refine(text,trip.prefs||[],trip.taste||{likes:[],dislikes:[]},history);
+    let res=await API.refine(text,trip.prefs||[],trip.taste||{likes:[],dislikes:[]},history);
     setBusy(false);
-    if(res.error&&!res.reply){ setMsgs(m=>[...m,{role:'anchor',text:"I couldn't reach my brain just now — try again in a moment."}]); return; }
+    // If the AI is unavailable, still learn the taste locally so the feature works.
+    if(res.error||(!res.reply&&!(res.add_likes||[]).length&&!(res.add_dislikes||[]).length)) res=localTaste(text);
     if((res.add_likes||[]).length||(res.add_dislikes||[]).length) onLearn&&onLearn(res.add_likes||[],res.add_dislikes||[]);
     setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Got it — noted.',add_likes:res.add_likes||[],add_dislikes:res.add_dislikes||[]}]);
   };
