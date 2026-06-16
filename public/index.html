@@ -192,6 +192,15 @@ const API={
       return d.url||null;
     }catch{return null;}
   },
+  async refine(message,prefs,taste,history){
+    try{
+      const r=await fetch('/api/refine',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({message,prefs,taste,history})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',reply:d.reply||'',add_likes:[],add_dislikes:[]};
+      return {reply:d.reply||'',add_likes:d.add_likes||[],add_dislikes:d.add_dislikes||[]};
+    }catch{return {error:'network',reply:'',add_likes:[],add_dislikes:[]};}
+  },
   async parsePlace(text){
     try{
       const r=await fetch('/api/parse-place',{method:'POST',headers:{'content-type':'application/json'},
@@ -1188,10 +1197,12 @@ function MatchTag({mp}){
   );
 }
 
-function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onResetDismiss}) {
+function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onResetDismiss,onLike}) {
   const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
   const prefs=trip.prefs||[];
   const hasPrefs=prefs.length>0;
+  const taste=trip.taste||{likes:[],dislikes:[]};
+  const likeTags=taste.likes||[], dislikeTags=taste.dislikes||[];
   const prefsKey=JSON.stringify(prefs);
   const fullPool=useMemo(()=>getSuggestions(prefs,8,[],true),[prefsKey]); // strict: only pref-matched, no random backfill
   const [ai,setAi]=useState(null);
@@ -1204,77 +1215,56 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
     });
     return ()=>{dead=true;};
   },[prefsKey]); // eslint-disable-line
+  const reasonFor=p=>(ai&&ai[p.id]&&ai[p.id].reason)||p.reason||p.note||p.digest||'';
+  const hay=p=>((p.name||'')+' '+(p.catLabel||'')+' '+(p.area||'')+' '+reasonFor(p)).toLowerCase();
+  const matchesAny=(p,tags)=>{const h=hay(p);return tags.some(t=>t&&h.includes(t));};
   const saved=new Set((trip.scratchpad||[]).map(s=>s.sourceId).filter(Boolean));
   const anchored=new Set(trip.anchoredPlaces||[]);
   const dismissed=new Set(trip.dismissedPlaces||[]);
-  const visible=fullPool.filter(p=>!saved.has(p.id)&&!anchored.has(p.id)&&!dismissed.has(p.id));
-  const ordered=ai?[...visible].sort((a,b)=>((ai[b.id]?.score||0)-(ai[a.id]?.score||0))):visible;
-  const reasonFor=p=>(ai&&ai[p.id]&&ai[p.id].reason)||p.reason||p.note||p.digest||'';
-  const featured=ordered[0];
-  const list=ordered.slice(1);
-  const featAnc=featured&&anchored.has(featured.id);
-  const featScore=featured&&ai&&ai[featured.id]&&ai[featured.id].score;
+  let visible=fullPool.filter(p=>!saved.has(p.id)&&!anchored.has(p.id)&&!dismissed.has(p.id));
+  if(dislikeTags.length) visible=visible.filter(p=>!matchesAny(p,dislikeTags));
+  const scoreOf=p=>(matchesAny(p,likeTags)?1000:0)+(ai&&ai[p.id]?ai[p.id].score:0);
+  const ordered=[...visible].sort((a,b)=>scoreOf(b)-scoreOf(a));
   return (
     <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
       <div style={{padding:'16px 18px 8px'}}>
-        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Discover · Tokyo</div>
-        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>{hasPrefs?<>Picked for how<br/>you travel</>:<>Popular in<br/>Tokyo</>}</div>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
+          <div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Discover · Tokyo</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>{hasPrefs?<>Picked for how<br/>you travel</>:<>Popular in<br/>Tokyo</>}</div>
+          </div>
+          <button onClick={()=>push({type:'discoverchat'})} aria-label="Train Anchor" style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,border:'none',background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',borderRadius:999,padding:'9px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,cursor:'pointer',boxShadow:'0 4px 12px rgba(108,92,231,0.35)'}}>
+            <SparkleIco size={14} color="#fff"/> Train
+          </button>
+        </div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:6}}>{hasPrefs?'Only places that match your tastes — swipe right to save, left to skip.':'Set your tastes in onboarding to personalize these.'}</div>
       </div>
-      <div style={{display:'flex',gap:8,overflowX:'auto',padding:'8px 18px 14px'}}>
+      {(likeTags.length>0||dislikeTags.length>0)&&(
+        <div onClick={()=>push({type:'discoverchat'})} style={{margin:'4px 18px 0',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'#F4F2FF',border:'1px solid #E3DCFF',borderRadius:14,padding:'9px 12px',cursor:'pointer'}}>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:700,color:'#5A48D6',textTransform:'uppercase',letterSpacing:'0.04em'}}>Tuned by you</span>
+          {likeTags.slice(0,3).map(t=><span key={'l'+t} style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 9px'}}>👍 {t}</span>)}
+          {dislikeTags.slice(0,2).map(t=><span key={'d'+t} style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9A3B2A',background:'#FDE2D8',borderRadius:999,padding:'2px 9px'}}>🚫 {t}</span>)}
+        </div>
+      )}
+      <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px 6px'}}>
         {chips.map(c=>(
           <span key={c} style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,background:'#fff',border:'1px solid #E3E5F0',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,color:'#4E5072',whiteSpace:'nowrap'}}>
             <span style={{width:7,height:7,borderRadius:'50%',background:'#FB7242'}}/>{c}
           </span>
         ))}
       </div>
-      {!featured&&(
+      {ordered.length===0&&(
         <div style={{margin:'8px 18px',background:'#fff',borderRadius:20,padding:'28px 20px',textAlign:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>
           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>You're all caught up</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:5,lineHeight:1.5}}>You've sorted everything we picked for you. Saved places are in your scratchpad.</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:5,lineHeight:1.5}}>You've sorted everything we picked for you. Saved places are in your scratchpad — or train Anchor to widen the net.</div>
           {dismissed.size>0&&<button onClick={onResetDismiss} style={{marginTop:14,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:12,padding:'10px 16px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:600,color:'#5A48D6',cursor:'pointer'}}>Bring back skipped places</button>}
         </div>
       )}
-      {featured&&(
-      <div style={{padding:'0 18px 6px'}}>
-        <SwipeCard onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(featured)} onSwipeLeft={()=>onDismiss&&onDismiss(featured.id)} onTap={()=>push({type:'place',id:featured.id})}>
-        <div style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
-          <Photo name={featured.name} area={featured.area} grad={featured.catGrad} emoji={placeEmoji(featured)} emojiSize={52} scrim="linear-gradient(180deg,rgba(0,0,0,0.06) 0%,rgba(0,0,0,0.30) 100%)" style={{height:136,padding:14}}>
-            <span style={{position:'relative',display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.92)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
-              <StarIco size={13} color="#ED5A2A"/> {featScore?`Top match · ${featScore}%`:'Top pick for you'}
-            </span>
-            <div style={{position:'absolute',right:14,bottom:14,display:'flex',gap:7,alignItems:'center'}}>
-              <StatusPill openNow={featured.openNow} small/>
-              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'rgba(255,255,255,0.92)',background:'rgba(0,0,0,0.16)',padding:'5px 9px',borderRadius:8}}>{featured.area}</span>
-            </div>
-          </Photo>
-          <div style={{padding:'14px 16px 16px'}}>
-            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
-              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,color:'#16172A',letterSpacing:'-0.01em',flex:1}}>{featured.name}</div>
-              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
-                <Ratings rating={featured.rating} tabelogRating={featured.tabelogRating}/>
-                <BudgetBadge budget={featured.budget}/>
-              </div>
-            </div>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:3}}>{featured.station}</div>
-            <div style={{marginTop:9}}><MatchTag mp={featured._matchPref}/></div>
-            <div style={{display:'flex',gap:9,marginTop:10,background:'#FFF1EA',borderRadius:14,padding:'12px 13px'}}>
-              <SparkleIco size={17} color="#FB7242"/>
-              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.45}}>{reasonFor(featured)}</div>
-            </div>
-            <div style={{marginTop:12}}><SourceLinks name={featured.name} area={featured.area}/></div>
-            <button onClick={e=>{e.stopPropagation();onAnchorPlace&&onAnchorPlace(featured.id);}} style={{marginTop:13,width:'100%',border:'none',background:featAnc?'#F1EEFF':'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:featAnc?'#5A48D6':'#fff',fontWeight:600,fontSize:15,padding:13,borderRadius:14,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:featAnc?'none':'0 6px 18px rgba(248,87,166,0.32)'}}>
-              <AnchorIco size={17} color={featAnc?'#5A48D6':'#fff'}/> {featAnc?'Anchored ✓':'Anchor it'}
-            </button>
-          </div>
-        </div>
-        </SwipeCard>
-      </div>
-      )}
-      {list.length>0&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you · <span style={{fontWeight:500,color:'#9092AD'}}>swipe to save or skip</span></div>}
-      <div style={{display:'flex',flexDirection:'column',gap:12,padding:'0 18px 24px'}}>
-        {list.map(p=>(
-          <SwipeCard key={p.id} onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(p)} onSwipeLeft={()=>onDismiss&&onDismiss(p.id)} onTap={()=>push({type:'place',id:p.id})}>
+      <div style={{display:'flex',flexDirection:'column',gap:12,padding:'10px 18px 24px'}}>
+        {ordered.map(p=>(
+          <SwipeCard key={p.id} labels={{near:'＋ Scratchpad',far:'⚓ Anchor',left:'Skip ✕'}}
+            onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(p)} onSwipeRightFar={()=>onAnchorPlace&&onAnchorPlace(p.id)}
+            onSwipeLeft={()=>onDismiss&&onDismiss(p.id)} onTap={()=>push({type:'place',id:p.id})}>
           <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
             <div style={{display:'flex',gap:13}}>
               <Photo name={p.name} area={p.area} grad={p.catGrad} emoji={placeEmoji(p)} emojiSize={32} scrim="linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,0.32) 100%)" style={{width:80,height:80,borderRadius:14,flexShrink:0,display:'flex',alignItems:'flex-end',padding:7}}>
@@ -1294,10 +1284,95 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
             </div>
             <div style={{marginTop:9}}><MatchTag mp={p._matchPref}/></div>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>
-            <div style={{marginTop:10}}><SourceLinks name={p.name} area={p.area} label={false}/></div>
+            <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+              <SourceLinks name={p.name} area={p.area} label={false}/>
+              <div style={{display:'flex',gap:7,flexShrink:0}}>
+                <button onClick={e=>{e.stopPropagation();onLike&&onLike((p.catLabel||'').toLowerCase());}} aria-label="Like" title="More like this"
+                  style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👍</button>
+                <button onClick={e=>{e.stopPropagation();onDismiss&&onDismiss(p.id);}} aria-label="Not for me" title="Not for me"
+                  style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👎</button>
+              </div>
+            </div>
           </div>
           </SwipeCard>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── DISCOVER TRAINING CHAT ── */
+function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste}){
+  const taste=trip.taste||{likes:[],dislikes:[]};
+  const likes=taste.likes||[], dislikes=taste.dislikes||[];
+  const [msgs,setMsgs]=useState([{role:'anchor',text:"Hey — I'm Anchor. Tell me what you love or want to avoid in Tokyo and I'll tune your Discover feed. Try “I love tiny natural-wine bars” or “no touristy spots.”"}]);
+  const [input,setInput]=useState('');
+  const [busy,setBusy]=useState(false);
+  const scrollRef=React.useRef(null);
+  useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[msgs,busy]);
+  const send=async(preset)=>{
+    const text=(preset||input).trim(); if(!text||busy) return;
+    const history=msgs.slice(-6).map(m=>({role:m.role==='user'?'user':'anchor',text:m.text}));
+    setMsgs(m=>[...m,{role:'user',text}]); setInput(''); setBusy(true);
+    const res=await API.refine(text,trip.prefs||[],trip.taste||{likes:[],dislikes:[]},history);
+    setBusy(false);
+    if(res.error&&!res.reply){ setMsgs(m=>[...m,{role:'anchor',text:"I couldn't reach my brain just now — try again in a moment."}]); return; }
+    if((res.add_likes||[]).length||(res.add_dislikes||[]).length) onLearn&&onLearn(res.add_likes||[],res.add_dislikes||[]);
+    setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Got it — noted.',add_likes:res.add_likes||[],add_dislikes:res.add_dislikes||[]}]);
+  };
+  const quick=['I love quiet, hidden spots','No tourist crowds','More natural wine & sake','Cheap standing bars'];
+  return(
+    <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Train Anchor</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>Tell me your taste — I'll remember it</div>
+        </div>
+        <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',display:'flex',alignItems:'center',justifyContent:'center'}}><SparkleIco size={18} color="#fff"/></div>
+      </div>
+      {(likes.length>0||dislikes.length>0)&&(
+        <div style={{flexShrink:0,padding:'10px 16px',borderBottom:'1px solid #ECEDF6',display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,color:'#9092AD',textTransform:'uppercase',letterSpacing:'0.04em',marginRight:2}}>Learned</span>
+          {likes.map(t=>(
+            <span key={'l'+t} style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'4px 6px 4px 10px'}}>👍 {t}
+              <button onClick={()=>onRemoveTaste&&onRemoveTaste('likes',t)} aria-label="Remove" style={{border:'none',background:'rgba(14,134,91,0.14)',color:'#0E865B',borderRadius:'50%',width:16,height:16,fontSize:11,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+            </span>
+          ))}
+          {dislikes.map(t=>(
+            <span key={'d'+t} style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9A3B2A',background:'#FDE2D8',borderRadius:999,padding:'4px 6px 4px 10px'}}>🚫 {t}
+              <button onClick={()=>onRemoveTaste&&onRemoveTaste('dislikes',t)} aria-label="Remove" style={{border:'none',background:'rgba(154,59,42,0.14)',color:'#9A3B2A',borderRadius:'50%',width:16,height:16,fontSize:11,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'16px 16px 8px',display:'flex',flexDirection:'column',gap:12}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{alignSelf:m.role==='user'?'flex-end':'flex-start',maxWidth:'86%'}}>
+            <div style={{background:m.role==='user'?'linear-gradient(135deg,#8B72FB,#6C5CE7)':'#fff',color:m.role==='user'?'#fff':'#16172A',
+              borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'11px 13px',
+              fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,lineHeight:1.45,boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>{m.text}</div>
+            {(m.add_likes&&m.add_likes.length>0||m.add_dislikes&&m.add_dislikes.length>0)&&(
+              <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:6}}>
+                {(m.add_likes||[]).map(t=><span key={'al'+t} style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 9px'}}>+👍 {t}</span>)}
+                {(m.add_dislikes||[]).map(t=><span key={'ad'+t} style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#9A3B2A',background:'#FDE2D8',borderRadius:999,padding:'2px 9px'}}>+🚫 {t}</span>)}
+              </div>
+            )}
+          </div>
+        ))}
+        {busy&&<div style={{alignSelf:'flex-start',background:'#fff',borderRadius:'16px 16px 16px 4px',padding:'11px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>Anchor is thinking…</div>}
+      </div>
+      {msgs.length<=1&&(
+        <div style={{flexShrink:0,display:'flex',gap:8,overflowX:'auto',padding:'4px 16px 10px'}}>
+          {quick.map(q=>(
+            <button key={q} onClick={()=>send(q)} style={{flexShrink:0,whiteSpace:'nowrap',border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{q}</button>
+          ))}
+        </div>
+      )}
+      <div style={{flexShrink:0,display:'flex',gap:9,padding:'10px 14px calc(12px + env(safe-area-inset-bottom))',borderTop:'1px solid #ECEDF6',background:'#FAFAFD'}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')send();}}
+          placeholder="What do you love, or want to avoid?" style={{flex:1,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+        <button onClick={()=>send()} disabled={!input.trim()||busy} style={{flexShrink:0,border:'none',borderRadius:14,background:!input.trim()||busy?'#C9C2F0':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontWeight:600,fontSize:15,padding:'0 18px',cursor:!input.trim()||busy?'default':'pointer'}}>Send</button>
       </div>
     </div>
   );
@@ -2247,6 +2322,17 @@ function App(){
   };
   const dismissDiscover=id=>persist({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),id]});
   const resetDismissed=()=>persist({...trip,dismissedPlaces:[]});
+  // Discover "train Anchor": learned taste tags drive ranking/filtering.
+  const mergeTags=(arr,add)=>[...new Set([...(arr||[]),...add.map(s=>String(s).toLowerCase().trim()).filter(Boolean)])].slice(0,40);
+  const learnTaste=(addLikes,addDislikes)=>{
+    const t=trip.taste||{likes:[],dislikes:[]};
+    persist({...trip,taste:{likes:mergeTags(t.likes,addLikes||[]),dislikes:mergeTags(t.dislikes,addDislikes||[])}});
+  };
+  const removeTaste=(kind,tag)=>{
+    const t=trip.taste||{likes:[],dislikes:[]};
+    persist({...trip,taste:{...t,[kind]:(t[kind]||[]).filter(x=>x!==tag)}});
+  };
+  const likeCategory=tag=>{ if(tag) learnTaste([tag],[]); };
   // Stash a live (Google) place into the scratchpad — status 'idea' or 'anchored'.
   const stashLive=(p,status='idea')=>addScratch({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),status,note:'',addedAt:Date.now(),
     name:p.name,area:p.area,rating:p.rating,reviews:p.reviews,openNow:p.openNow,budget:p.budget,
@@ -2290,7 +2376,7 @@ function App(){
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
-        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onSaveToScratch={saveDiscover} onDismiss={dismissDiscover} onResetDismiss={resetDismissed}/>}
+        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onSaveToScratch={saveDiscover} onDismiss={dismissDiscover} onResetDismiss={resetDismissed} onLike={likeCategory}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
         {tab==='search'   &&<SearchScreen push={push} onStash={stashLive}/>}
@@ -2299,6 +2385,7 @@ function App(){
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
+        {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste}/>}
         {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}
 
         {stack.length===0&&(
