@@ -944,21 +944,29 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
   const planned=active?dayStopsRefs(trip,viewDay).map(r=>resolveStop(trip,r)).filter(Boolean):[];
   const usePlan=planned.length>0;
 
-  // Static candidate pool; Claude ranks it and writes the per-traveler reasons.
-  const pool=useMemo(()=>getSuggestions(trip.prefs||[],8,[]),[JSON.stringify(trip.prefs)]);
+  // Candidate pool, tuned by learned taste; Claude ranks it and writes reasons.
+  const taste=trip.taste||{likes:[],dislikes:[]};
+  const likeTags=taste.likes||[], dislikeTags=taste.dislikes||[];
+  const tasteKey=JSON.stringify(taste);
+  const hayOf=p=>((p.name||'')+' '+(p.catLabel||'')+' '+(p.area||'')+' '+(p.note||p.reason||p.digest||'')).toLowerCase();
+  const pool=useMemo(()=>{
+    let pl=getSuggestions(trip.prefs||[],8,[]);
+    if(dislikeTags.length) pl=pl.filter(p=>{const h=hayOf(p);return !dislikeTags.some(t=>t&&h.includes(t));});
+    if(likeTags.length) pl=[...pl].sort((a,b)=>((likeTags.some(t=>hayOf(b).includes(t))?1:0)-(likeTags.some(t=>hayOf(a).includes(t))?1:0)));
+    return pl;
+  },[JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
   const [ai,setAi]=useState(null);        // [{id,reason}] top AI picks, or null
   const [aiLoading,setAiLoading]=useState(false);
-  const prefsKey=JSON.stringify(trip.prefs||[]);
   useEffect(()=>{
     if(!active||usePlan){return;}
     let dead=false; setAiLoading(true);
-    API.suggest(trip.prefs||[],pool).then(ranked=>{
+    API.suggest([...(trip.prefs||[]),...likeTags],pool).then(ranked=>{
       if(dead) return;
       setAiLoading(false);
       setAi(ranked?ranked.slice(0,2).map(r=>({id:r.id,reason:r.reason})).filter(x=>PLACES[x.id]):null);
     });
     return ()=>{dead=true;};
-  },[active,usePlan,prefsKey]); // eslint-disable-line
+  },[active,usePlan,JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
 
   const suggs=(ai&&ai.length)
     ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
@@ -1442,7 +1450,7 @@ function nearPinsFrom(coords,places){
   return pins;
 }
 
-function NearScreen({push,filter,setFilter,onSaveNear}) {
+function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
   const [coords,setCoords]=useState(null);
   const [geo,setGeo]=useState('idle'); // idle|locating|denied|unsupported|error|ready
   const [data,setData]=useState({loading:false,places:[],error:null});
@@ -1471,7 +1479,13 @@ function NearScreen({push,filter,setFilter,onSaveNear}) {
     return ()=>{dead=true;};
   },[coords,filter]);
 
-  const places=(data.places||[]).filter(p=> filter==='open'? p.openNow!=='closed' : true);
+  const taste=(trip&&trip.taste)||{likes:[],dislikes:[]};
+  const likeTags=taste.likes||[], dislikeTags=taste.dislikes||[];
+  const tHay=p=>((p.name||'')+' '+(p.category||'')+' '+(p.area||'')).toLowerCase();
+  const likedNear=p=>likeTags.some(t=>t&&tHay(p).includes(t));
+  let places=(data.places||[]).filter(p=> filter==='open'? p.openNow!=='closed' : true);
+  if(dislikeTags.length) places=places.filter(p=>!dislikeTags.some(t=>t&&tHay(p).includes(t)));
+  if(likeTags.length) places=[...places].sort((a,b)=>(likedNear(b)?1:0)-(likedNear(a)?1:0)); // float taste matches up
   const pins=nearPinsFrom(coords,places);
   const areaLabel=places[0]?.area||'Near you';
 
@@ -1540,6 +1554,7 @@ function NearScreen({push,filter,setFilter,onSaveNear}) {
                     <StatusPill openNow={n.openNow} small/>
                     {n.rating!=null&&<Ratings rating={n.rating}/>}
                     {n.budget&&<BudgetBadge budget={n.budget}/>}
+                    {likedNear(n)&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 8px'}}>✨ your taste</span>}
                   </div>
                   {n.category&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:4}}>{n.category}{n.reviews?` · ${n.reviews.toLocaleString()} reviews`:''}</div>}
                 </div>
@@ -2452,7 +2467,7 @@ function App(){
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
-        {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby}/>}
+        {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
         {tab==='search'   &&<SearchScreen push={push} onStash={stashLive}/>}
 
