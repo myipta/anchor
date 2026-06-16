@@ -33,3 +33,39 @@ export function extractJson(text) {
   if (m) { try { return JSON.parse(m[0]); } catch {} }
   return null;
 }
+
+// Call DeepSeek (OpenAI-compatible chat completions). Returns
+// { text, model } on success or { error, status, detail } on failure.
+// Used for the cheap/fast "Haiku-tier" work. Key: DEEPSEEK_API_KEY.
+export async function callDeepSeek(env, { system, user, maxTokens = 1024, json: wantJson = false }) {
+  const model = env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const messages = [];
+  if (system) messages.push({ role: 'system', content: system });
+  messages.push({ role: 'user', content: user });
+
+  const body = { model, messages, max_tokens: maxTokens, stream: false };
+  // DeepSeek honors OpenAI-style JSON mode; the prompt must mention "json".
+  if (wantJson) body.response_format = { type: 'json_object' };
+
+  let r;
+  try {
+    r = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { error: 'fetch_failed', status: 502, detail: String(e).slice(0, 300) };
+  }
+  if (!r.ok) {
+    const detail = await r.text();
+    return { error: 'deepseek_error', status: r.status, detail: detail.slice(0, 500) };
+  }
+  const data = await r.json();
+  const text = (data.choices?.[0]?.message?.content || '').trim();
+  return { text, model };
+}
+

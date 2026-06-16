@@ -12,10 +12,11 @@ export async function onRequest(context) {
     ok: true,
     service: 'anchor-api',
     keys: {
-      anthropic: Boolean(env.ANTHROPIC_API_KEY),
+      deepseek: Boolean(env.DEEPSEEK_API_KEY),
       googlePlaces: Boolean(env.GOOGLE_PLACES_API_KEY),
+      anthropic: Boolean(env.ANTHROPIC_API_KEY),
     },
-    model: env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+    suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     time: new Date().toISOString(),
   });
 }

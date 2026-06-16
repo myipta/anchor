@@ -10,7 +10,7 @@ variables in Cloudflare**, never in the code or the git repo.
 | Route          | Method | Purpose                                                        | Key needed             |
 | -------------- | ------ | -------------------------------------------------------------- | ---------------------- |
 | `/api/health`  | GET    | Reports which keys are configured (never returns the values)  | none                   |
-| `/api/suggest` | POST   | Claude ranks candidate places for a traveler + writes reasons | `ANTHROPIC_API_KEY`    |
+| `/api/suggest` | POST   | DeepSeek ranks candidate places for a traveler + writes reasons | `DEEPSEEK_API_KEY`    |
 | `/api/places`  | POST   | Google Places fetches real Tokyo venue data (rating, hours…)  | `GOOGLE_PLACES_API_KEY`|
 
 If a key is missing the endpoint returns `503 { error: "missing_key" }` with a
@@ -20,9 +20,9 @@ clear message — the app keeps working on its built-in data.
 
 1. Cloudflare dashboard → **Workers & Pages → anchor → Settings → Environment variables**.
 2. Add, as **encrypted** (Secret) variables for Production (and Preview):
-   - `ANTHROPIC_API_KEY` — your Claude API key (`sk-ant-…`)
+   - `DEEPSEEK_API_KEY` — your DeepSeek API key (`sk-…`)
    - `GOOGLE_PLACES_API_KEY` — your Google Places API key (`AIza…`)
-   - *(optional)* `ANTHROPIC_MODEL` (default `claude-haiku-4-5-20251001`; try `claude-sonnet-4-6`)
+   - *(optional)* `DEEPSEEK_MODEL` (default `deepseek-v4-flash`; try `deepseek-v4-pro`)
 
    The Google key must have the **Places API (New)** enabled in Google Cloud
    (APIs & Services → Library). Restrict it to that API; an HTTP-referrer
@@ -52,6 +52,7 @@ curl -X POST http://localhost:8788/api/suggest \
         {"id":"blue","name":"Blue Bottle Kiyosumi","area":"Kiyosumi","cat":"coffee","digest":"Quiet flagship, single-origin pour-over."},
         {"id":"omoide","name":"Omoide Yokocho","area":"Shinjuku","cat":"food","digest":"Six-stool yakitori alley, charcoal smoke."}
       ]}'
+# → { model:"deepseek-v4-flash", ranked:[{id,score,reason}] }
 
 curl -X POST http://localhost:8788/api/places \
   -H 'content-type: application/json' \

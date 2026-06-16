@@ -1,9 +1,10 @@
-# Local development secrets for `npx wrangler pages dev .`
+# Local development secrets for `npx wrangler dev`
 # Copy this file to `.dev.vars` (which is gitignored) and fill in your keys.
 # In PRODUCTION these are set in the Cloudflare dashboard, NOT in any file.
 
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_PLACES_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXX
 
-# Optional override:
-# ANTHROPIC_MODEL=claude-sonnet-4-6
+# Optional overrides:
+# DEEPSEEK_MODEL=deepseek-v4-pro
+# ANTHROPIC_API_KEY=sk-ant-...   # reserved for the future chat/plan endpoints
