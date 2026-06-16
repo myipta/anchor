@@ -14,6 +14,15 @@ import { onRequest as places } from './functions/api/places.js';
 import { onRequest as chat } from './functions/api/chat.js';
 import { onRequest as parsePlace } from './functions/api/parse-place.js';
 import { onRequest as optimize } from './functions/api/optimize.js';
+import { onRequest as near } from './functions/api/near.js';
+import { onRequest as refine } from './functions/api/refine.js';
+import { onRequest as photo } from './functions/api/photo.js';
+import { onRequest as search } from './functions/api/search.js';
+import { onRequest as authRequestCode } from './functions/api/auth-request-code.js';
+import { onRequest as authVerify } from './functions/api/auth-verify.js';
+import { onRequest as authMe } from './functions/api/auth-me.js';
+import { onRequest as authLogout } from './functions/api/auth-logout.js';
+import { onRequest as trip } from './functions/api/trip.js';
 
 const ROUTES = {
   '/api/health': health,
@@ -22,6 +31,15 @@ const ROUTES = {
   '/api/chat': chat,
   '/api/parse-place': parsePlace,
   '/api/optimize': optimize,
+  '/api/near': near,
+  '/api/refine': refine,
+  '/api/photo': photo,
+  '/api/search': search,
+  '/api/auth/request-code': authRequestCode,
+  '/api/auth/verify': authVerify,
+  '/api/auth/me': authMe,
+  '/api/auth/logout': authLogout,
+  '/api/trip': trip,
 };
 
 export default {

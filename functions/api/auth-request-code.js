@@ -1,0 +1,30 @@
+// POST /api/auth/request-code  { email }
+// Generates a 6-digit code, stores its hash (10-min expiry), emails it.
+// In dev (DEV_AUTH=1) the code is returned in the response so you can test
+// without an email provider — never enable DEV_AUTH in production.
+
+import { json, preflight, requireMethod } from './_lib.js';
+import { requireDB, sha256, randomCode, normalizeEmail, isEmail } from './_auth.js';
+import { sendLoginCode } from './_email.js';
+
+export async function onRequest({ request, env }) {
+  const pf = preflight(request); if (pf) return pf;
+  const bad = requireMethod(request, 'POST'); if (bad) return bad;
+  const noDb = requireDB(env); if (noDb) return noDb;
+
+  let body; try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
+  const email = normalizeEmail(body.email);
+  if (!isEmail(email)) return json({ error: 'bad_email', message: 'Enter a valid email address.' }, 400);
+
+  const code = randomCode();
+  const now = Date.now();
+  await env.DB.prepare('DELETE FROM login_codes WHERE email=?').bind(email).run();
+  await env.DB.prepare('INSERT INTO login_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?,?,?,0,?)')
+    .bind(email, await sha256(code), now + 10 * 60 * 1000, now).run();
+
+  const mail = await sendLoginCode(env, email, code);
+  const out = { ok: true, sent: mail.sent };
+  if (!mail.sent && env.DEV_AUTH === '1') out.devCode = code; // dev convenience only
+  if (!mail.sent && env.DEV_AUTH !== '1') out.message = 'Email delivery is not configured yet.';
+  return json(out);
+}

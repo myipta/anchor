@@ -7,10 +7,10 @@ const CORS = {
   'access-control-allow-headers': 'content-type',
 };
 
-export function json(obj, status = 200) {
+export function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...CORS },
+    headers: { 'content-type': 'application/json; charset=utf-8', ...CORS, ...extraHeaders },
   });
 }
 

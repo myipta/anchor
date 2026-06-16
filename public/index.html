@@ -231,6 +231,38 @@ const API={
       return d; // {ordered:[{id,time}], rationale}
     }catch{return {error:'network',message:'Could not reach Anchor.'};}
   },
+  // ── Accounts + cloud-saved trip (Cloudflare D1). Cookies ride along same-origin. ──
+  // me() → {cloud:false} if backend unconfigured, else {user:{email}|null}.
+  async me(){
+    try{
+      const r=await fetch('/api/auth/me');
+      if(r.status===503) return {cloud:false};
+      if(r.status===401) return {cloud:true,user:null};
+      if(!r.ok) return {cloud:false};
+      const d=await r.json(); return {cloud:true,user:d.user||null};
+    }catch{return {cloud:false};}
+  },
+  async requestCode(email){
+    try{
+      const r=await fetch('/api/auth/request-code',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email})});
+      const d=await r.json(); return {...d,status:r.status};
+    }catch{return {error:'network',message:'Could not reach Anchor.'};}
+  },
+  async verifyCode(email,code){
+    try{
+      const r=await fetch('/api/auth/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,code})});
+      const d=await r.json(); return {...d,status:r.status};
+    }catch{return {error:'network',message:'Could not reach Anchor.'};}
+  },
+  async logout(){ try{await fetch('/api/auth/logout',{method:'POST'});}catch{} },
+  async tripGet(){
+    try{ const r=await fetch('/api/trip'); if(!r.ok) return {error:r.status}; return await r.json(); }
+    catch{return {error:'network'};}
+  },
+  async tripPut(data){
+    try{ const r=await fetch('/api/trip',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({data})}); return await r.json(); }
+    catch{return {error:'network'};}
+  },
 };
 
 /* ── ITINERARY ── */
@@ -2125,7 +2157,7 @@ function AnchorDetailOverlay({anchorId,pop,push,trip}){
 }
 
 /* ── TRIP OVERLAY ── */
-function TripOverlay({pop,push,trip}){
+function TripOverlay({pop,push,trip,user,cloud,onLogout}){
   const today=todayStr();
   const days=Array.from({length:trip.nights||0},(_,i)=>({
     date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
@@ -2142,6 +2174,15 @@ function TripOverlay({pop,push,trip}){
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'12px 18px 32px'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'6px 0 10px'}}>Account</div>
+        <div style={{display:'flex',alignItems:'center',gap:12,background:'#fff',borderRadius:16,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',marginBottom:6}}>
+          <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,flexShrink:0}}>{((user&&user.email)||'?')[0].toUpperCase()}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14.5,color:'#16172A',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(user&&user.email)||'Offline'}</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color: cloud&&user?'#0E865B':'#C0863A',marginTop:1}}>{cloud&&user?'✓ Synced to your account':'Saved on this device only'}</div>
+          </div>
+          {user&&onLogout&&<button onClick={onLogout} style={{flexShrink:0,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:11,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,padding:'8px 13px',cursor:'pointer'}}>Log out</button>}
+        </div>
         {trip.anchors&&trip.anchors.length>0&&(
           <>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'6px 0 10px'}}>Hotels</div>
@@ -2594,8 +2635,8 @@ function BottomNav({tab,setTab}) {
 }
 
 /* ── APP ── */
-function App(){
-  const [trip,setTrip]=useState(()=>loadState());
+function App({initialTrip,user,cloud,onLogout,onCloudSync}){
+  const [trip,setTrip]=useState(()=> initialTrip!==undefined ? initialTrip : loadState());
   const [editingTrip,setEditingTrip]=useState(false);
   const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form'
   const [formInit,setFormInit]=useState(null);
@@ -2629,14 +2670,14 @@ function App(){
     return ()=>window.removeEventListener('popstate',onPop);
   },[]); // eslint-disable-line
 
-  const handleTripComplete=t=>{saveState(t);setTrip(t);setEditingTrip(false);setOnbPhase('chat');setFormInit(null);};
+  // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
+  const persist=nt=>{saveState(nt);setTrip(nt);onCloudSync&&onCloudSync(nt);};
+  const handleTripComplete=t=>{persist(t);setEditingTrip(false);setOnbPhase('chat');setFormInit(null);};
   const handleAnchorPlace=id=>{
     const ap=trip?.anchoredPlaces||[];
     const newAp=ap.includes(id)?ap.filter(x=>x!==id):[...ap,id];
-    const newTrip={...trip,anchoredPlaces:newAp};
-    saveState(newTrip);setTrip(newTrip);
+    persist({...trip,anchoredPlaces:newAp});
   };
-  const persist=nt=>{saveState(nt);setTrip(nt);};
   const addScratch=item=>persist({...trip,scratchpad:[...(trip.scratchpad||[]),item]});
   const anchorScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).map(s=>s.id===id?{...s,status:s.status==='anchored'?'idea':'anchored'}:s)});
   const removeScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).filter(s=>s.id!==id)});
@@ -2753,7 +2794,7 @@ function App(){
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
-        {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip}/>}
+        {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip} user={user} cloud={cloud} onLogout={onLogout}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
         {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}
@@ -2770,7 +2811,105 @@ function App(){
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+/* ── AUTH: email-passcode sign in ── */
+function LoginScreen({onAuthed}){
+  const [step,setStep]=useState('email'); // 'email' | 'code'
+  const [email,setEmail]=useState('');
+  const [code,setCode]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState('');
+  const [note,setNote]=useState(''); // dev/info note
+  const sendCode=async()=>{
+    const e=email.trim().toLowerCase(); setErr('');
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){setErr('Enter a valid email address.');return;}
+    setBusy(true); const r=await API.requestCode(e); setBusy(false);
+    if(r.error||r.status>=400){setErr(r.message||'Could not send a code. Try again.');return;}
+    setStep('code'); setNote(r.devCode?`Dev mode — your code is ${r.devCode}`:(r.sent?`Code sent to ${e}`:(r.message||'')));
+  };
+  const verify=async()=>{
+    const c=code.trim(); setErr('');
+    if(!/^\d{6}$/.test(c)){setErr('Enter the 6-digit code.');return;}
+    setBusy(true); const r=await API.verifyCode(email.trim().toLowerCase(),c); setBusy(false);
+    if(r.user){onAuthed(r.user);return;}
+    setErr(r.message||'Incorrect code.');
+  };
+  const onKey=(e,fn)=>{if(e.key==='Enter')fn();};
+  return(
+    <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',background:'#FAFAFD',padding:'0 26px',WebkitFontSmoothing:'antialiased'}}>
+      <div style={{maxWidth:380,width:'100%',margin:'0 auto'}}>
+        <div style={{width:54,height:54,borderRadius:16,background:'linear-gradient(135deg,#FB7242,#F857A6)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:20,boxShadow:'0 8px 22px rgba(251,114,66,0.35)'}}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="3"/><path d="M12 8v13M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
+        </div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.15}}>{step==='email'?'Sign in to Anchor':'Check your email'}</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#6C6E8E',marginTop:7,lineHeight:1.5}}>
+          {step==='email'?'Your trips, anchors and scratchpad save to your account — on any device.':`Enter the 6-digit code we sent to ${email.trim().toLowerCase()}.`}
+        </div>
+        <div style={{marginTop:22}}>
+          {step==='email'?(
+            <input autoFocus type="email" inputMode="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>onKey(e,sendCode)} placeholder="you@email.com"
+              style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:13,padding:'14px 15px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:16,color:'#16172A',outline:'none',boxSizing:'border-box'}}/>
+          ):(
+            <input autoFocus inputMode="numeric" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>onKey(e,verify)} placeholder="123456"
+              style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:13,padding:'14px 15px',fontFamily:"'Geist Mono',monospace",fontSize:22,letterSpacing:'8px',textAlign:'center',color:'#16172A',outline:'none',boxSizing:'border-box'}}/>
+          )}
+          {err&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#D8553C',marginTop:9}}>{err}</div>}
+          {note&&!err&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#0E865B',marginTop:9}}>{note}</div>}
+          <button disabled={busy} onClick={step==='email'?sendCode:verify}
+            style={{width:'100%',marginTop:14,border:'none',borderRadius:13,background:busy?'#B6A9F2':'#6C5CE7',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,padding:'14px',cursor:busy?'default':'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.28)'}}>
+            {busy?'…':(step==='email'?'Send code':'Verify & sign in')}</button>
+          {step==='code'&&<button onClick={()=>{setStep('email');setCode('');setErr('');setNote('');}} style={{width:'100%',marginTop:10,border:'none',background:'none',color:'#9092AD',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,cursor:'pointer'}}>← Use a different email</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Splash(){
+  return <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',background:'#FAFAFD'}}>
+    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>Loading Anchor…</div></div>;
+}
+
+// Root: resolves auth + the source-of-truth trip before mounting the app.
+// Fails open — if the backend has no DB bound, runs offline (localStorage only)
+// exactly like before, so the app is never bricked pre-provisioning.
+function Root(){
+  const [phase,setPhase]=useState('loading'); // 'loading' | 'login' | 'app'
+  const [user,setUser]=useState(null);
+  const [cloud,setCloud]=useState(false);
+  const [initialTrip,setInitialTrip]=useState(undefined);
+  const syncTimer=React.useRef(null);
+
+  // Load the user's trip from the server, migrating a local trip up on first login.
+  const enterWithTrip=async(u)=>{
+    const res=await API.tripGet();
+    const local=loadState();
+    if(res&&res.trip){ saveState(res.trip); setInitialTrip(res.trip); }
+    else if(local){ API.tripPut(local); setInitialTrip(local); }   // migrate device → cloud
+    else { setInitialTrip(null); }
+    setUser(u); setCloud(true); setPhase('app');
+  };
+
+  useEffect(()=>{(async()=>{
+    const r=await API.me();
+    if(!r.cloud){ setCloud(false); setInitialTrip(loadState()); setPhase('app'); return; } // offline fallback
+    if(r.user){ await enterWithTrip(r.user); } else { setCloud(true); setPhase('login'); }
+  })();},[]); // eslint-disable-line
+
+  // Debounced cloud save (only when signed in).
+  const onCloudSync=React.useCallback(nt=>{
+    clearTimeout(syncTimer.current);
+    syncTimer.current=setTimeout(()=>{API.tripPut(nt);},800);
+  },[]);
+
+  const onLogout=async()=>{ await API.logout(); setUser(null); setInitialTrip(undefined); setPhase('login'); };
+
+  if(phase==='loading') return <Splash/>;
+  if(phase==='login') return <LoginScreen onAuthed={enterWithTrip}/>;
+  return <App key={user?user.email:'offline'} initialTrip={initialTrip} user={user} cloud={cloud}
+    onCloudSync={cloud&&user?onCloudSync:null} onLogout={cloud&&user?onLogout:null}/>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
 </script>
 </body>
 </html>

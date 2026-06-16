@@ -77,3 +77,61 @@ const { ranked } = await res.json(); // [{ id, score, reason }]
 ```
 
 Because the API is same-origin, there are no CORS or key-exposure concerns.
+
+## Accounts & saved trips (Cloudflare D1)
+
+Trips, anchors, scratchpad and taste are stored **server-side per user** in a
+Cloudflare D1 (SQLite) database, so data survives across devices, browsers and
+deploy URLs. Sign-in is passwordless: email → 6-digit code → httpOnly session
+cookie. Schema lives in `schema.sql`; tables: `users`, `login_codes`,
+`sessions`, `trips` (one JSON blob per user; schema already allows multi-trip).
+
+**The app fails open:** if `DB` isn't bound, it runs exactly as before —
+offline, saving only to `localStorage`. So you can deploy this safely and turn
+on cloud sync when ready.
+
+### One-time setup
+
+1. **Create the database** and copy the returned `database_id`:
+   ```bash
+   npx wrangler d1 create anchor
+   ```
+   Paste it into `wrangler.jsonc` → `d1_databases[0].database_id` (replacing
+   `REPLACE_WITH_REAL_ID`).
+
+2. **Create the tables** (run on both local and remote):
+   ```bash
+   npx wrangler d1 execute anchor --local  --file=./schema.sql
+   npx wrangler d1 execute anchor --remote --file=./schema.sql
+   ```
+
+3. **Email delivery (Resend)** — add as encrypted vars in Cloudflare
+   (Settings → Environment variables, Production + Preview):
+   - `RESEND_API_KEY` — from resend.com
+   - `EMAIL_FROM` — e.g. `Anchor <login@anchor.mattyip.dev>`
+
+   For real delivery to *anyone*, verify a sending domain in Resend (add the DNS
+   records). Until then Resend only delivers to your own account email.
+
+4. **Deploy.** Cloudflare provisions the D1 binding from `wrangler.jsonc` on the
+   next push.
+
+### Endpoints
+
+| Route                    | Method   | Purpose                                         |
+| ------------------------ | -------- | ----------------------------------------------- |
+| `/api/auth/request-code` | POST     | Email a 6-digit sign-in code                    |
+| `/api/auth/verify`       | POST     | Verify code → open session cookie               |
+| `/api/auth/me`           | GET      | Current user, or 401 / 503 (no DB)              |
+| `/api/auth/logout`       | POST     | Clear session                                   |
+| `/api/trip`              | GET/PUT  | Load / save the signed-in user's trip           |
+
+### Local development with the database
+
+```bash
+npx wrangler d1 execute anchor --local --file=./schema.sql   # once
+npx wrangler dev --port 8788 --local --var DEV_AUTH:1        # serves app + API + local D1
+```
+
+`DEV_AUTH=1` returns the login code in the API response (and the UI shows it),
+so you can sign in locally without email. **Never set `DEV_AUTH` in production.**
