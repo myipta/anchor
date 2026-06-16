@@ -137,12 +137,21 @@ const PREF_TO_CATS={coffee:['coffee'],ramen:['food'],izakaya:['food'],sushi:['fo
 const TOKYO_AREAS=['Shinjuku','Shibuya','Harajuku','Aoyama','Ginza','Asakusa','Ueno','Roppongi','Nakameguro','Ebisu','Shimokitazawa','Daikanyama','Koenji','Yanaka'];
 const AREA_LABELS={Shinjuku:'West Tokyo',Shibuya:'South Shibuya',Harajuku:'Harajuku',Aoyama:'Aoyama',Ginza:'Ginza',Asakusa:'Old Tokyo',Ueno:'Ueno · Yanaka',Roppongi:'Roppongi',Nakameguro:'Meguro River',Ebisu:'Ebisu',Shimokitazawa:'Shimokita',Daikanyama:'Daikanyama'};
 
-function getSuggestions(prefs,count=2,exclude=[]){
+function prefForPlace(place,prefs){
+  for(const p of (prefs||[])){
+    if((PREF_TO_CATS[p]||[]).includes(place.cat)){
+      const opt=PREF_OPTS.find(o=>o.id===p);
+      return opt?{id:p,label:opt.label,emoji:opt.emoji}:{id:p,label:p,emoji:''};
+    }
+  }
+  return null;
+}
+function getSuggestions(prefs,count=2,exclude=[],strict=false){
   const cats=[...new Set(prefs.flatMap(p=>PREF_TO_CATS[p]||[]))];
   const pool=Object.keys(PLACES).filter(id=>!exclude.includes(id));
   const matches=cats.length>0?pool.filter(id=>cats.includes(PLACES[id].cat)):pool;
-  const use=matches.length>=count?matches:[...matches,...pool.filter(id=>!matches.includes(id))];
-  return use.slice(0,count).map(bp);
+  const use=strict?matches:(matches.length>=count?matches:[...matches,...pool.filter(id=>!matches.includes(id))]);
+  return use.slice(0,count).map(id=>({...bp(id),_matchPref:prefForPlace(PLACES[id],prefs)}));
 }
 
 /* ── API CLIENT ── (same-origin Cloudflare Worker; all calls fail soft) */
@@ -163,6 +172,15 @@ const API={
       const d=await r.json();
       if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
       return {places:Array.isArray(d.places)?d.places:[]};
+    }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
+  },
+  async near(lat,lng,{radius=1200,type='all',limit=16}={}){
+    try{
+      const r=await fetch('/api/near',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({lat,lng,radius,type,limit})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
+      return {places:Array.isArray(d.places)?d.places:[],center:d.center};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
   async parsePlace(text){
@@ -1066,31 +1084,77 @@ function SourceLinks({name,area,googleUrl,label=true}){
   );
 }
 
-function DiscoverScreen({push,trip,onAnchorPlace}) {
+/* Swipe-to-save / swipe-to-skip wrapper. Right = save, left = skip; small drag = tap. */
+function SwipeCard({onSwipeRight,onSwipeLeft,onTap,children}){
+  const [dx,setDx]=useState(0);
+  const [anim,setAnim]=useState(false);
+  const st=React.useRef({x:0,y:0,drag:false,decided:false,horiz:false});
+  const TH=90;
+  const down=e=>{const p=e; st.current={x:p.clientX,y:p.clientY,drag:true,decided:false,horiz:false}; setAnim(false); try{e.currentTarget.setPointerCapture(e.pointerId);}catch{}};
+  const move=e=>{const s=st.current; if(!s.drag) return; const ddx=e.clientX-s.x, ddy=e.clientY-s.y;
+    if(!s.decided&&(Math.abs(ddx)>8||Math.abs(ddy)>8)){s.decided=true; s.horiz=Math.abs(ddx)>Math.abs(ddy);}
+    if(s.decided&&s.horiz){setDx(ddx);} };
+  const up=()=>{const s=st.current; if(!s.drag) return; s.drag=false; const d=dx;
+    if(s.horiz&&d>TH){setAnim(true);setDx(520);setTimeout(()=>onSwipeRight&&onSwipeRight(),190);return;}
+    if(s.horiz&&d<-TH){setAnim(true);setDx(-520);setTimeout(()=>onSwipeLeft&&onSwipeLeft(),190);return;}
+    if((!s.decided||!s.horiz)&&Math.abs(d)<6&&onTap){onTap();}
+    setAnim(true);setDx(0); };
+  const saveOp=dx>0?Math.min(dx/TH,1):0, skipOp=dx<0?Math.min(-dx/TH,1):0;
+  return(
+    <div style={{position:'relative',borderRadius:20,overflow:'hidden'}}>
+      <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',
+        background:dx>0?'linear-gradient(90deg,#D6F5E6 0%,#F4FBF7 60%)':dx<0?'linear-gradient(90deg,#F6F6FA 40%,#ECEDF6 100%)':'transparent'}}>
+        <span style={{opacity:saveOp,display:'inline-flex',alignItems:'center',gap:6,color:'#0E865B',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>＋ Save</span>
+        <span style={{opacity:skipOp,display:'inline-flex',alignItems:'center',gap:6,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>Skip ✕</span>
+      </div>
+      <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        style={{transform:`translateX(${dx}px) rotate(${dx*0.018}deg)`,transition:anim?'transform .19s ease':'none',touchAction:'pan-y',position:'relative'}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MatchTag({mp}){
+  return(
+    <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'#F1EEFF',border:'1px solid #E3DCFF',borderRadius:999,padding:'4px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:'#5A48D6'}}>
+      {mp?`${mp.emoji} Because you like ${mp.label}`:'★ Popular in Tokyo'}
+    </span>
+  );
+}
+
+function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onResetDismiss}) {
   const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
-  const pool=useMemo(()=>getSuggestions(trip.prefs||[],7,[]),[JSON.stringify(trip.prefs)]);
+  const prefs=trip.prefs||[];
+  const hasPrefs=prefs.length>0;
+  const prefsKey=JSON.stringify(prefs);
+  const fullPool=useMemo(()=>getSuggestions(prefs,8,[],true),[prefsKey]); // strict: only pref-matched, no random backfill
   const [ai,setAi]=useState(null);
-  const prefsKey=JSON.stringify(trip.prefs||[]);
   useEffect(()=>{
     let dead=false;
-    API.suggest(trip.prefs||[],pool).then(ranked=>{
+    API.suggest(prefs,fullPool).then(ranked=>{
       if(dead) return;
       if(ranked&&ranked.length){const m={};ranked.forEach(r=>{if(PLACES[r.id])m[r.id]=r;});setAi(m);}
       else setAi(null);
     });
     return ()=>{dead=true;};
   },[prefsKey]); // eslint-disable-line
-  const ordered=ai?[...pool].sort((a,b)=>((ai[b.id]?.score||0)-(ai[a.id]?.score||0))):pool;
+  const saved=new Set((trip.scratchpad||[]).map(s=>s.sourceId).filter(Boolean));
+  const anchored=new Set(trip.anchoredPlaces||[]);
+  const dismissed=new Set(trip.dismissedPlaces||[]);
+  const visible=fullPool.filter(p=>!saved.has(p.id)&&!anchored.has(p.id)&&!dismissed.has(p.id));
+  const ordered=ai?[...visible].sort((a,b)=>((ai[b.id]?.score||0)-(ai[a.id]?.score||0))):visible;
   const reasonFor=p=>(ai&&ai[p.id]&&ai[p.id].reason)||p.reason||p.note||p.digest||'';
   const featured=ordered[0];
-  const list=ordered.slice(1,5);
-  const featAnc=featured&&(trip.anchoredPlaces||[]).includes(featured.id);
+  const list=ordered.slice(1);
+  const featAnc=featured&&anchored.has(featured.id);
   const featScore=featured&&ai&&ai[featured.id]&&ai[featured.id].score;
   return (
     <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
       <div style={{padding:'16px 18px 8px'}}>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Discover · Tokyo</div>
-        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>Picked for how<br/>you travel</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>{hasPrefs?<>Picked for how<br/>you travel</>:<>Popular in<br/>Tokyo</>}</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:6}}>{hasPrefs?'Only places that match your tastes — swipe right to save, left to skip.':'Set your tastes in onboarding to personalize these.'}</div>
       </div>
       <div style={{display:'flex',gap:8,overflowX:'auto',padding:'8px 18px 14px'}}>
         {chips.map(c=>(
@@ -1099,6 +1163,13 @@ function DiscoverScreen({push,trip,onAnchorPlace}) {
           </span>
         ))}
       </div>
+      {!featured&&(
+        <div style={{margin:'8px 18px',background:'#fff',borderRadius:20,padding:'28px 20px',textAlign:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>You're all caught up</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:5,lineHeight:1.5}}>You've sorted everything we picked for you. Saved places are in your scratchpad.</div>
+          {dismissed.size>0&&<button onClick={onResetDismiss} style={{marginTop:14,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:12,padding:'10px 16px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:600,color:'#5A48D6',cursor:'pointer'}}>Bring back skipped places</button>}
+        </div>
+      )}
       {featured&&(
       <div style={{padding:'0 18px 6px'}}>
         <div onClick={()=>push({type:'place',id:featured.id})} style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
@@ -1120,6 +1191,7 @@ function DiscoverScreen({push,trip,onAnchorPlace}) {
               </div>
             </div>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:3}}>{featured.station}</div>
+            <div style={{marginTop:9}}><MatchTag mp={featured._matchPref}/></div>
             <div style={{display:'flex',gap:9,marginTop:10,background:'#FFF1EA',borderRadius:14,padding:'12px 13px'}}>
               <SparkleIco size={17} color="#FB7242"/>
               <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.45}}>{reasonFor(featured)}</div>
@@ -1132,10 +1204,11 @@ function DiscoverScreen({push,trip,onAnchorPlace}) {
         </div>
       </div>
       )}
-      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you</div>
+      {list.length>0&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you · <span style={{fontWeight:500,color:'#9092AD'}}>swipe to save or skip</span></div>}
       <div style={{display:'flex',flexDirection:'column',gap:12,padding:'0 18px 24px'}}>
         {list.map(p=>(
-          <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+          <SwipeCard key={p.id} onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(p)} onSwipeLeft={()=>onDismiss&&onDismiss(p.id)} onTap={()=>push({type:'place',id:p.id})}>
+          <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
             <div style={{display:'flex',gap:13}}>
               <div style={{width:80,height:80,borderRadius:14,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:7}}>
                 <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
@@ -1152,9 +1225,11 @@ function DiscoverScreen({push,trip,onAnchorPlace}) {
                 </div>
               </div>
             </div>
+            <div style={{marginTop:9}}><MatchTag mp={p._matchPref}/></div>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>
             <div style={{marginTop:10}}><SourceLinks name={p.name} area={p.area} label={false}/></div>
           </div>
+          </SwipeCard>
         ))}
       </div>
     </div>
@@ -1162,30 +1237,72 @@ function DiscoverScreen({push,trip,onAnchorPlace}) {
 }
 
 /* ── NEAR ── */
-function NearScreen({push,filter,setFilter}) {
-  const raw=[
-    {id:'ichiran',dist:'220 m',walk:'3 min',status:'open'},
-    {id:'about',dist:'300 m',walk:'4 min',status:'soon'},
-    {id:'sky',dist:'400 m',walk:'6 min',status:'open'},
-    {id:'gyukatsu',dist:'480 m',walk:'6 min',status:'open'},
-    {id:'nonbei',dist:'290 m',walk:'4 min',status:'closed'},
-    {id:'fuglen',dist:'650 m',walk:'9 min',status:'open'},
-  ];
-  const nearList=raw.filter(n=>{
-    if(filter==='open') return n.status!=='closed';
-    if(filter==='food') return PLACES[n.id].cat==='food';
-    if(filter==='coffee') return PLACES[n.id].cat==='coffee';
-    return true;
-  }).map(n=>({...bp(n.id),...n,openNow:n.status}));
-  const nearPins=[
-    {id:'you',x:46,y:56,kind:'you'},
-    {id:'ichiran',x:30,y:64,num:1,kind:'anchor'},
-    {id:'sky',x:38,y:40,num:2,kind:'anchor'},
-    {id:'about',x:60,y:50,num:3,kind:'suggest'},
-    {id:'nonbei',x:56,y:70,num:4,kind:'suggest'},
-  ];
+function fmtDist(m){ if(m==null) return '—'; return m<1000?`${m} m`:`${(m/1000).toFixed(1)} km`; }
+function walkMin(m){ if(m==null) return ''; return `${Math.max(1,Math.round(m/80))} min`; } // ~80 m/min
+function nowTime(){ return new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+
+// Plot real nearby places around "you" (centre). North is up; east is right.
+function nearPinsFrom(coords,places){
+  const pins=[{id:'you',x:50,y:50,kind:'you'}];
+  if(!coords) return pins;
+  const top=places.slice(0,5).filter(p=>p.lat!=null);
+  const maxM=Math.max(...top.map(p=>p.meters||0),1);
+  const cosLat=Math.cos(coords.lat*Math.PI/180);
+  top.forEach((p,i)=>{
+    const north=(p.lat-coords.lat)*111000;
+    const east=(p.lng-coords.lng)*111000*cosLat;
+    const f=38/maxM;
+    const x=Math.max(7,Math.min(93,50+east*f));
+    const y=Math.max(10,Math.min(92,50-north*f));
+    pins.push({id:'n'+i,x,y,num:i+1,kind:'suggest'});
+  });
+  return pins;
+}
+
+function NearScreen({push,filter,setFilter,onSaveNear}) {
+  const [coords,setCoords]=useState(null);
+  const [geo,setGeo]=useState('idle'); // idle|locating|denied|unsupported|error|ready
+  const [data,setData]=useState({loading:false,places:[],error:null});
+  const [saved,setSaved]=useState({});
+
+  const locate=React.useCallback(()=>{
+    if(typeof navigator==='undefined'||!navigator.geolocation){ setGeo('unsupported'); return; }
+    setGeo('locating');
+    navigator.geolocation.getCurrentPosition(
+      pos=>{ setCoords({lat:pos.coords.latitude,lng:pos.coords.longitude}); setGeo('ready'); },
+      err=>{ setGeo(err&&err.code===1?'denied':'error'); },
+      {enableHighAccuracy:true,timeout:12000,maximumAge:60000}
+    );
+  },[]);
+  useEffect(()=>{ locate(); },[locate]);
+
+  useEffect(()=>{
+    if(!coords) return;
+    let dead=false; setData(d=>({...d,loading:true,error:null}));
+    const type=filter==='food'?'food':filter==='coffee'?'coffee':'all';
+    API.near(coords.lat,coords.lng,{type}).then(res=>{
+      if(dead) return;
+      if(res.error){ setData({loading:false,places:[],error:res}); return; }
+      setData({loading:false,places:res.places||[],error:null});
+    });
+    return ()=>{dead=true;};
+  },[coords,filter]);
+
+  const places=(data.places||[]).filter(p=> filter==='open'? p.openNow!=='closed' : true);
+  const pins=nearPinsFrom(coords,places);
+  const areaLabel=places[0]?.area||'Near you';
+
   const fBase={border:'1px solid #E3E5F0',background:'#fff',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'8px 14px',borderRadius:999,cursor:'pointer',flexShrink:0};
   const fOn={...fBase,background:'#6C5CE7',color:'#fff',border:'1px solid #6C5CE7'};
+
+  const Msg=({title,body,action,actionLabel})=>(
+    <div style={{margin:'14px 18px',background:'#fff',borderRadius:20,padding:'26px 20px',textAlign:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>
+      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>{title}</div>
+      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:6,lineHeight:1.5}}>{body}</div>
+      {action&&<button onClick={action} style={{marginTop:15,border:'none',borderRadius:12,background:'#6C5CE7',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:14,padding:'11px 18px',cursor:'pointer'}}>{actionLabel}</button>}
+    </div>
+  );
+
   return (
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
@@ -1194,39 +1311,67 @@ function NearScreen({push,filter,setFilter}) {
           Near you now
         </div>
         <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginTop:3}}>
-          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05}}>Shibuya</div>
-          <div style={{fontFamily:"'Geist Mono',monospace",fontSize:13,color:'#6C6E8E'}}>6:24 PM</div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05}}>{geo==='ready'?areaLabel:'Near you'}</div>
+          <div style={{fontFamily:"'Geist Mono',monospace",fontSize:13,color:'#6C6E8E'}}>{nowTime()}</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto'}}>
-        <div style={{padding:'12px 18px 4px'}}>
-          <div style={{borderRadius:18,overflow:'hidden',height:106,position:'relative',boxShadow:'inset 0 0 0 1px #E7E8F1'}}>
-            <AnchorMap pins={nearPins} connect={false} height="106px"/>
+        {geo==='ready'&&coords&&(
+          <div style={{padding:'12px 18px 4px'}}>
+            <div style={{borderRadius:18,overflow:'hidden',height:106,position:'relative',boxShadow:'inset 0 0 0 1px #E7E8F1'}}>
+              <AnchorMap pins={pins} connect={false} height="106px"/>
+            </div>
           </div>
-        </div>
-        <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px'}}>
-          {[['all','All'],['open','Open now'],['food','Food'],['coffee','Coffee']].map(([k,l])=>(
-            <button key={k} onClick={()=>setFilter(k)} style={filter===k?fOn:fBase}>{l}</button>
-          ))}
-        </div>
-        <div style={{display:'flex',flexDirection:'column',gap:10,padding:'0 18px 24px'}}>
-          {nearList.map(n=>(
-            <div key={n.id} onClick={()=>push({type:'place',id:n.id})} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
-              <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:n.catGrad,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',textAlign:'center',lineHeight:1.2,padding:'0 4px'}}>{n.dist}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1}}>{n.name}</div>
-                <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
-                  <StatusPill openNow={n.openNow} small/>
-                  <Ratings rating={n.rating} tabelogRating={n.tabelogRating}/>
-                  <BudgetBadge budget={n.budget}/>
+        )}
+        {geo==='ready'&&(
+          <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px'}}>
+            {[['all','All'],['open','Open now'],['food','Food'],['coffee','Coffee']].map(([k,l])=>(
+              <button key={k} onClick={()=>setFilter(k)} style={filter===k?fOn:fBase}>{l}</button>
+            ))}
+          </div>
+        )}
+
+        {geo==='locating'&&<Msg title="Finding where you are…" body="Checking your location to show what's actually around you."/>}
+        {geo==='denied'&&<Msg title="Location is off" body="Turn on location access for this site to see places near you right now." action={locate} actionLabel="Try again"/>}
+        {geo==='unsupported'&&<Msg title="Location unavailable" body="This device can't share its location, so Near can't show what's around you."/>}
+        {geo==='error'&&<Msg title="Couldn't get your location" body="Something went wrong reading your position. Try again." action={locate} actionLabel="Try again"/>}
+
+        {geo==='ready'&&data.loading&&<Msg title="Looking around you…" body="Pulling live places within walking distance."/>}
+        {geo==='ready'&&!data.loading&&data.error&&data.error.error==='missing_key'&&
+          <Msg title="Live nearby isn't configured" body="Near needs the Google Places key set on the server to show real places around you."/>}
+        {geo==='ready'&&!data.loading&&data.error&&data.error.error!=='missing_key'&&
+          <Msg title="Couldn't load nearby places" body="The live search didn't respond. Try again in a moment." action={()=>setCoords(c=>c&&{...c})} actionLabel="Retry"/>}
+        {geo==='ready'&&!data.loading&&!data.error&&places.length===0&&
+          <Msg title="Nothing open nearby" body="No matching places within walking distance right now. Try a different filter."/>}
+
+        {geo==='ready'&&!data.loading&&!data.error&&places.length>0&&(
+          <div style={{display:'flex',flexDirection:'column',gap:10,padding:'0 18px 24px'}}>
+            {places.map((n,i)=>(
+              <div key={(n.googleUrl||n.name)+i} onClick={()=>n.googleUrl&&window.open(n.googleUrl,'_blank','noopener')} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",color:'#fff',lineHeight:1.1}}>
+                  <span style={{fontSize:13,fontWeight:700}}>{fmtDist(n.meters)}</span>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.name}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
+                    <StatusPill openNow={n.openNow} small/>
+                    {n.rating!=null&&<Ratings rating={n.rating}/>}
+                    {n.budget&&<BudgetBadge budget={n.budget}/>}
+                  </div>
+                  {n.category&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:4}}>{n.category}{n.reviews?` · ${n.reviews.toLocaleString()} reviews`:''}</div>}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flexShrink:0}}>
+                  <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E'}}>
+                    <WalkIco size={12}/> {walkMin(n.meters)}
+                  </span>
+                  <button onClick={e=>{e.stopPropagation(); if(saved[i])return; onSaveNear&&onSaveNear(n); setSaved(s=>({...s,[i]:true}));}}
+                    aria-label="Save" style={{width:30,height:30,borderRadius:9,border:'1.5px solid '+(saved[i]?'#14A06E':'#E3E5F0'),background:saved[i]?'#14A06E':'#fff',color:saved[i]?'#fff':'#6C5CE7',fontSize:16,fontWeight:700,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{saved[i]?'✓':'＋'}</button>
                 </div>
               </div>
-              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E',flexShrink:0}}>
-                <WalkIco size={12}/> {n.walk}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center',marginTop:2}}>Live from Google · tap a place for directions</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2010,6 +2155,19 @@ function App(){
   const anchorScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).map(s=>s.id===id?{...s,status:s.status==='anchored'?'idea':'anchored'}:s)});
   const removeScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).filter(s=>s.id!==id)});
   const scratchCount=(trip?.scratchpad||[]).length;
+  // Discover swipe: right saves a curated pick to the scratchpad, left dismisses it.
+  const saveDiscover=p=>{
+    if((trip.scratchpad||[]).some(s=>s.sourceId===p.id)) return;
+    addScratch({id:'s'+Date.now(),status:'idea',note:'',addedAt:Date.now(),sourceId:p.id,
+      name:p.name,area:p.area,rating:p.rating,tabelogRating:p.tabelogRating,openNow:p.openNow,
+      budget:p.budget,hours:p.hours,category:p.catLabel||p.cat,coords:p.coords});
+  };
+  const dismissDiscover=id=>persist({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),id]});
+  const resetDismissed=()=>persist({...trip,dismissedPlaces:[]});
+  // Near swipe-free save: stash a live nearby place into the scratchpad.
+  const saveNearby=p=>addScratch({id:'s'+Date.now(),status:'idea',note:'',addedAt:Date.now(),
+    name:p.name,area:p.area,rating:p.rating,reviews:p.reviews,openNow:p.openNow,budget:p.budget,
+    hours:p.hours,address:p.address,category:p.category,googleUrl:p.googleUrl,coords:p.coords});
 
   const addToDay=(dayIndex,ref)=>{
     const it={...(trip.itinerary||{})};
@@ -2046,8 +2204,8 @@ function App(){
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
-        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace}/>}
-        {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter}/>}
+        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onSaveToScratch={saveDiscover} onDismiss={dismissDiscover} onResetDismiss={resetDismissed}/>}
+        {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip}/>}
         {tab==='search'   &&<SearchScreen push={push}/>}
 
