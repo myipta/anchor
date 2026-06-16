@@ -178,6 +178,15 @@ const API={
       return {places:Array.isArray(d.places)?d.places:[]};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
+  async search(query,area,taste,prefs,limit=14){
+    try{
+      const r=await fetch('/api/search',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({query,area,taste,prefs,limit})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
+      return {places:Array.isArray(d.places)?d.places:[],source:d.source};
+    }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
+  },
   async near(lat,lng,{radius=1200,type='all',limit=16,q=''}={}){
     try{
       const r=await fetch('/api/near',{method:'POST',headers:{'content-type':'application/json'},
@@ -1866,28 +1875,31 @@ function GoogleResultCard({p}){
 }
 
 /* ── SEARCH ── */
-function SearchScreen({push,onStash}) {
+function SearchScreen({push,onStash,trip,onReject}) {
   const [mode,setMode]=useState('saved'); // 'saved' | 'live'
   const [q,setQ]=useState('');
   const [live,setLive]=useState({loading:false,places:[],error:null,for:''});
-  const [hidden,setHidden]=useState({}); // keys swiped away this search
+  const [hidden,setHidden]=useState({}); // keys removed (swiped/disliked) this search
+  const [rejKey,setRejKey]=useState(null); // card showing the "why not?" box
+  const [rejWhy,setRejWhy]=useState('');
 
-  // Live Google search — debounced, fails soft.
+  // Live taste-ranked search (Apify/Google + DeepSeek) — debounced, fails soft.
   useEffect(()=>{
     if(mode!=='live'||q.trim().length<2){return;}
     const term=q.trim();
     let dead=false;
     setLive(l=>({...l,loading:true,error:null}));
     const t=setTimeout(()=>{
-      API.places(term,'',12).then(res=>{
+      API.search(term,'',(trip&&trip.taste)||{likes:[],dislikes:[]},(trip&&trip.prefs)||[],14).then(res=>{
         if(dead) return;
-        setHidden({});
+        setHidden({}); setRejKey(null);
         setLive({loading:false,places:res.places||[],error:res.error?(res.message||'Search failed'):null,for:term});
       });
-    },450);
+    },550);
     return ()=>{dead=true;clearTimeout(t);};
-  },[mode,q]);
+  },[mode,q]); // eslint-disable-line
   const liveVisible=live.places.map((p,i)=>({p,key:(p.googleUrl||p.name||'r')+i})).filter(x=>!hidden[x.key]);
+  const doReject=(p,key)=>{ onReject&&onReject(p,rejWhy); setHidden(h=>({...h,[key]:1})); setRejKey(null); setRejWhy(''); };
 
   const allPlaces=Object.keys(PLACES).map(bp);
   const results=mode!=='saved'||q.length<2?[]:allPlaces.filter(p=>{
@@ -1936,12 +1948,13 @@ function SearchScreen({push,onStash}) {
           <div style={{padding:'12px 18px 24px'}}>
             {q.trim().length<2&&(
               <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search live Tokyo venues from Google — real ratings, hours, and open status.</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search live Tokyo venues — Anchor ranks them to your taste and tells you why each fits.</div>
               </div>
             )}
             {q.trim().length>=2&&live.loading&&(
               <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>Searching Tokyo for "{q.trim()}"…</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>Finding &amp; ranking "{q.trim()}" for you…</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#B6B8CC',marginTop:6}}>Pulling live results — this can take a few seconds.</div>
               </div>
             )}
             {q.trim().length>=2&&!live.loading&&live.error&&(
@@ -1957,23 +1970,55 @@ function SearchScreen({push,onStash}) {
             {!live.loading&&!live.error&&liveVisible.length>0&&(
               <>
                 <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:6}}>
-                  <span>{liveVisible.length} live results</span>
-                  <span style={{color:'#D5D6E4'}}>·</span>
-                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5}}>Google</span>
+                  <span>{liveVisible.length} results ranked for you</span>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:11,background:'#F1EEFF',borderRadius:12,padding:'9px 12px'}}>
-                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#5A48D6',lineHeight:1.4}}>Swipe <b>right</b> → scratchpad · <b>far right</b> → anchor · <b>left</b> → skip</span>
+                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#5A48D6',lineHeight:1.4}}>Swipe <b>right</b> → scratchpad · <b>far right</b> → anchor · <b>left</b> → skip · 👎 to teach Anchor</span>
                 </div>
                 <div style={{display:'flex',flexDirection:'column',gap:10}}>
                   {liveVisible.map(({p,key})=>(
-                    <SwipeCard key={key}
-                      labels={{near:'＋ Scratchpad',far:'Anchor',left:'Skip ✕'}}
-                      onSwipeRight={()=>{onStash&&onStash(p,'idea'); setHidden(h=>({...h,[key]:1}));}}
-                      onSwipeRightFar={()=>{onStash&&onStash(p,'anchored'); setHidden(h=>({...h,[key]:1}));}}
-                      onSwipeLeft={()=>setHidden(h=>({...h,[key]:1}))}
-                      onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
-                      <GoogleResultCard p={p}/>
-                    </SwipeCard>
+                    <div key={key}>
+                      <SwipeCard
+                        labels={{near:'＋ Scratchpad',far:'Anchor',left:'Skip ✕'}}
+                        onSwipeRight={()=>{onStash&&onStash(p,'idea'); setHidden(h=>({...h,[key]:1}));}}
+                        onSwipeRightFar={()=>{onStash&&onStash(p,'anchored'); setHidden(h=>({...h,[key]:1}));}}
+                        onSwipeLeft={()=>setHidden(h=>({...h,[key]:1}))}
+                        onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
+                        <div style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+                          <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+                            <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" style={{width:46,height:46,borderRadius:12,flexShrink:0}}/>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
+                                <BudgetBadge budget={p.budget}/>
+                              </div>
+                              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
+                                {p.openNow&&<StatusPill openNow={p.openNow} small/>}
+                                {p.rating!=null&&<span style={{display:'inline-flex',alignItems:'center',gap:3}}><StarIco size={13}/><span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756'}}>{p.rating}</span>{p.reviews!=null&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>({p.reviews})</span>}</span>}
+                                {p.category&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{p.category}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          {p.reason&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.reason}</div></div>}
+                          <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                            <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/>
+                            <button onClick={e=>{e.stopPropagation();setRejWhy('');setRejKey(rejKey===key?null:key);}} aria-label="Not for me" title="Tell Anchor why"
+                              style={{flexShrink:0,width:34,height:34,borderRadius:10,border:'1.5px solid '+(rejKey===key?'#D8553C':'#F0D9D9'),background:rejKey===key?'#FDEEE9':'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
+                          </div>
+                        </div>
+                      </SwipeCard>
+                      {rejKey===key&&(
+                        <div style={{margin:'8px 4px 2px',background:'#fff',border:'1.5px solid #F0D9D9',borderRadius:14,padding:'12px 13px'}}>
+                          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#9A3B2A',marginBottom:8}}>What's off about {p.name}?</div>
+                          <input value={rejWhy} onChange={e=>setRejWhy(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')doReject(p,key);}} placeholder="e.g. too touristy, too pricey, not my vibe…"
+                            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:11,padding:'10px 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#16172A',outline:'none'}}/>
+                          <div style={{display:'flex',gap:8,marginTop:9}}>
+                            <button onClick={()=>doReject(p,key)} style={{flex:1,border:'none',borderRadius:11,background:'#D8553C',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,padding:'10px',cursor:'pointer'}}>Teach Anchor &amp; hide</button>
+                            <button onClick={()=>{setRejKey(null);setRejWhy('');}} style={{border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:11,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,padding:'10px 14px',cursor:'pointer'}}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </>
@@ -2624,6 +2669,14 @@ function App(){
     persist({...trip,taste:{...t,[kind]:(t[kind]||[]).filter(x=>x!==tag)}});
   };
   const likeCategory=tag=>{ if(tag) learnTaste([tag],[]); };
+  // Search dislike: learn why a result is wrong (AI if available, local otherwise).
+  const rejectSearch=async(place,why)=>{
+    const w=(why||'').trim();
+    const msg=w?`I don't like ${place.name} because ${w}`:`Not into places like ${place.name}${place.category?` (${place.category})`:''}`;
+    let res=await API.refine(msg,trip.prefs||[],trip.taste||{likes:[],dislikes:[]},[]);
+    if(res.error||(!(res.add_likes||[]).length&&!(res.add_dislikes||[]).length)) res=localTaste(msg);
+    learnTaste(res.add_likes||[],res.add_dislikes||[]);
+  };
   // Pull brand-new real Tokyo places (Google) from learned likes / prefs, into the Discover feed.
   const [optimizing,setOptimizing]=useState(false);
   const optimizeSearch=async()=>{
@@ -2696,7 +2749,7 @@ function App(){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onReject={rejectSearch}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
