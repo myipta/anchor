@@ -9,20 +9,15 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
-  }
+  },
   // Multi-tenant storage for accounts + saved trips. The app runs fine WITHOUT
-  // this (offline / localStorage only). To turn on cloud sync:
-  //   1. npx wrangler d1 create anchor
-  //   2. uncomment the block below and paste the returned database_id
-  //   3. npx wrangler d1 execute anchor --remote --file=./schema.sql
-  // Leaving a placeholder id uncommented would BREAK `wrangler deploy`, so it
-  // stays commented until the database exists.
-  //
-  // "d1_databases": [
-  //   {
-  //     "binding": "DB",
-  //     "database_name": "anchor",
-  //     "database_id": "PASTE_REAL_ID_HERE"
-  //   }
-  // ]
+  // this (offline / localStorage only); apply ./schema.sql to the DB with:
+  //   npx wrangler d1 execute anchor --remote --file=./schema.sql
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "anchor",
+      "database_id": "f03dedd1e5494a0730a34776c549b24d"
+    }
+  ]
 }
