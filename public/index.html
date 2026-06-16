@@ -1080,11 +1080,12 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
         {itinDays.map(d=>{
           const isToday=active&&d.i===viewDay;
           return(
-            <button key={d.i} onClick={()=>push({type:'day',dayIndex:d.i})} style={{flexShrink:0,width:118,textAlign:'left',border:'1.5px solid '+(isToday?'#6C5CE7':'#E3E5F0'),background:isToday?'#F1EEFF':'#fff',borderRadius:14,padding:'10px 12px',cursor:'pointer',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+            <button key={d.i} onClick={()=>push({type:'day',dayIndex:d.i})} style={{flexShrink:0,width:132,textAlign:'left',border:'1.5px solid '+(isToday?'#6C5CE7':'#E3E5F0'),background:isToday?'#F1EEFF':'#fff',borderRadius:14,padding:'10px 12px',cursor:'pointer',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:isToday?'#6C5CE7':'#9092AD'}}>Day {d.i+1}{isToday?' · Today':''}</div>
               <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14,color:'#16172A',marginTop:3,lineHeight:1.1}}>{d.date?fmtDate(d.date):'—'}</div>
-              <div style={{display:'flex',alignItems:'center',gap:5,marginTop:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:d.stops>0?'#0E865B':'#9092AD'}}>
-                {d.stops>0?<><span style={{width:6,height:6,borderRadius:'50%',background:'#14A06E'}}/>{d.stops} {d.stops===1?'stop':'stops'}</>:'Tap to plan'}
+              {todayAnchor&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#6C5CE7',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><AnchorIco size={10} color="#6C5CE7"/>{todayAnchor.area}</div>}
+              <div style={{display:'flex',alignItems:'center',gap:5,marginTop:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:d.stops>0?'#0E865B':'#9092AD'}}>
+                {d.stops>0?<><span style={{width:6,height:6,borderRadius:'50%',background:'#14A06E'}}/>{d.stops} {d.stops===1?'stop':'stops'}</>:'+ add places'}
               </div>
             </button>
           );
@@ -2299,9 +2300,28 @@ function DayPlanOverlay({dayIndex,pop,push,trip,onAdd,onRemove,onMove,onOptimize
         )}
         {opt.err&&<div style={{background:'#FFF1EA',borderRadius:12,padding:'10px 13px',marginBottom:14,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#8a4a2c'}}>{opt.err}</div>}
 
+        {hotel&&(
+          <div style={{display:'flex',gap:11,alignItems:'stretch',marginBottom:10}}>
+            <div style={{width:50,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',paddingTop:14}}>
+              <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Base</span>
+            </div>
+            <div style={{flex:1,minWidth:0,background:'linear-gradient(135deg,#F1EEFF 0%,#FBFAFF 100%)',border:'1.5px solid #E3DCFF',borderRadius:16,padding:'11px 12px'}}>
+              <div style={{display:'flex',gap:11,alignItems:'center'}}>
+                <Photo name={hotel.name} area={hotel.area} grad="linear-gradient(135deg,#9AA0FF,#6C5CE7)" style={{width:42,height:42,borderRadius:11,flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'inline-flex',alignItems:'center',gap:4,background:'#E4DEFF',borderRadius:999,padding:'2px 8px',marginBottom:3}}>
+                    <AnchorIco size={10} color="#5A48D6"/><span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:10.5,fontWeight:700,letterSpacing:'0.04em',textTransform:'uppercase',color:'#5A48D6'}}>Your hotel</span>
+                  </div>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{hotel.name}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{hotel.area} · start &amp; end your day here</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {stops.length===0?(
-          <div style={{textAlign:'center',padding:'24px'}}>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#9092AD',lineHeight:1.5}}>No stops yet. Add places below, then let Anchor arrange them.</div>
+          <div style={{textAlign:'center',padding:'8px 24px 24px'}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#9092AD',lineHeight:1.5}}>Add places below, then let Anchor arrange your day around your hotel.</div>
           </div>
         ):(
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
