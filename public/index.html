@@ -164,6 +164,15 @@ const API={
       return {places:Array.isArray(d.places)?d.places:[]};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
+  async parsePlace(text){
+    try{
+      const r=await fetch('/api/parse-place',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({text})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message};
+      return d; // {name, query, area, note, source}
+    }catch{return {error:'network'};}
+  },
 };
 
 function bp(id) {
@@ -1501,11 +1510,22 @@ function ScratchpadOverlay({pop,trip,onAdd,onAnchor,onRemove}){
   const find=async()=>{
     const term=q.trim(); if(term.length<2||finding) return;
     setFinding(true); setErr(null); setPreview(null);
-    const res=await API.places(term,'',1);
+    // 1) Let Anchor (DeepSeek) clean a messy note or a Google/Yelp link into a query.
+    let query=term, area='', parsedNote='';
+    const parsed=await API.parsePlace(term);
+    if(parsed && !parsed.error){
+      if(parsed.query) query=parsed.query;
+      if(parsed.area) area=parsed.area;
+      if(parsed.note) parsedNote=parsed.note;
+    }
+    if(!query){setFinding(false);setErr('Couldn’t spot a place in that — try the name directly.');return;}
+    // 2) Enrich the cleaned query via Google.
+    const res=await API.places(query,area,1);
     setFinding(false);
     if(res.error){setErr(res.message||'Search is unavailable right now.');return;}
     if(!res.places||!res.places.length){setErr('Couldn’t find that one — try a fuller name.');return;}
     setPreview(res.places[0]);
+    if(parsedNote && !note.trim()) setNote(parsedNote);
   };
   const confirmAdd=()=>{
     if(!preview) return;
@@ -1528,13 +1548,13 @@ function ScratchpadOverlay({pop,trip,onAdd,onAnchor,onRemove}){
       <div style={{flex:1,overflowY:'auto',padding:'14px 18px 28px'}}>
         <div style={{background:'#fff',borderRadius:18,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',marginBottom:16}}>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:9}}>Add a place</div>
-          <input value={q} onChange={e=>{setQ(e.target.value);setPreview(null);setErr(null);}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}
-            placeholder="Name a friend suggested, e.g. Narisawa"
-            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:12,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+          <textarea value={q} onChange={e=>{setQ(e.target.value);setPreview(null);setErr(null);}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();find();}}}
+            placeholder="Paste a name, a note, or a Google / Yelp link — e.g. “that coffee spot near Yoyogi Kenji mentioned”"
+            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:12,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none',resize:'none',lineHeight:1.45,minHeight:64}}/>
           <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Who suggested it / why (optional)"
             style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:12,padding:'10px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#353756',outline:'none',marginTop:8}}/>
           {!preview&&<button onClick={find} disabled={q.trim().length<2||finding} style={{marginTop:10,width:'100%',border:'none',borderRadius:12,background:q.trim().length>=2&&!finding?'#6C5CE7':'#E3E5F0',color:'#fff',fontWeight:600,fontSize:14.5,padding:'11px',cursor:q.trim().length>=2&&!finding?'pointer':'default',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7}}>
-            <SparkleIco size={16}/> {finding?'Anchor is looking…':'Find it'}
+            <SparkleIco size={16}/> {finding?'Anchor is reading…':'Find it'}
           </button>}
           {err&&<div style={{marginTop:10,background:'#FFF1EA',borderRadius:10,padding:'9px 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#8a4a2c'}}>{err}</div>}
           {preview&&(

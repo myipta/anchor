@@ -12,6 +12,7 @@ variables in Cloudflare**, never in the code or the git repo.
 | `/api/health`  | GET    | Reports which keys are configured (never returns the values)  | none                   |
 | `/api/chat`    | POST   | Conversational onboarding (Sonnet) — extracts trip fields     | `ANTHROPIC_API_KEY`    |
 | `/api/suggest` | POST   | DeepSeek ranks candidate places for a traveler + writes reasons | `DEEPSEEK_API_KEY`    |
+| `/api/parse-place` | POST | DeepSeek cleans a messy note / Google-Yelp link into a lookup | `DEEPSEEK_API_KEY`    |
 | `/api/places`  | POST   | Google Places fetches real Tokyo venue data (rating, hours…)  | `GOOGLE_PLACES_API_KEY`|
 
 If a key is missing the endpoint returns `503 { error: "missing_key" }` with a
