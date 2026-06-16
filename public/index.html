@@ -1085,30 +1085,38 @@ function SourceLinks({name,area,googleUrl,label=true}){
 }
 
 /* Swipe-to-save / swipe-to-skip wrapper. Right = save, left = skip; small drag = tap. */
-function SwipeCard({onSwipeRight,onSwipeLeft,onTap,children}){
+function SwipeCard({onSwipeRight,onSwipeRightFar,onSwipeLeft,onTap,labels={},children}){
+  const L={near:'＋ Save',far:'⚓ Anchor',left:'Skip ✕',...labels};
+  const NEAR=80, FAR=185;
   const [dx,setDx]=useState(0);
   const [anim,setAnim]=useState(false);
   const st=React.useRef({x:0,y:0,drag:false,decided:false,horiz:false});
-  const TH=90;
-  const down=e=>{const p=e; st.current={x:p.clientX,y:p.clientY,drag:true,decided:false,horiz:false}; setAnim(false); try{e.currentTarget.setPointerCapture(e.pointerId);}catch{}};
+  const down=e=>{
+    if(e.target&&e.target.closest&&e.target.closest('button,a')){st.current.drag=false;return;}
+    st.current={x:e.clientX,y:e.clientY,drag:true,decided:false,horiz:false}; setAnim(false);
+    try{e.currentTarget.setPointerCapture(e.pointerId);}catch{}};
   const move=e=>{const s=st.current; if(!s.drag) return; const ddx=e.clientX-s.x, ddy=e.clientY-s.y;
     if(!s.decided&&(Math.abs(ddx)>8||Math.abs(ddy)>8)){s.decided=true; s.horiz=Math.abs(ddx)>Math.abs(ddy);}
     if(s.decided&&s.horiz){setDx(ddx);} };
   const up=()=>{const s=st.current; if(!s.drag) return; s.drag=false; const d=dx;
-    if(s.horiz&&d>TH){setAnim(true);setDx(520);setTimeout(()=>onSwipeRight&&onSwipeRight(),190);return;}
-    if(s.horiz&&d<-TH){setAnim(true);setDx(-520);setTimeout(()=>onSwipeLeft&&onSwipeLeft(),190);return;}
+    if(s.horiz&&d>FAR&&onSwipeRightFar){setAnim(true);setDx(560);setTimeout(()=>onSwipeRightFar(),190);return;}
+    if(s.horiz&&d>NEAR&&onSwipeRight){setAnim(true);setDx(560);setTimeout(()=>onSwipeRight(),190);return;}
+    if(s.horiz&&d<-NEAR&&onSwipeLeft){setAnim(true);setDx(-560);setTimeout(()=>onSwipeLeft(),190);return;}
     if((!s.decided||!s.horiz)&&Math.abs(d)<6&&onTap){onTap();}
     setAnim(true);setDx(0); };
-  const saveOp=dx>0?Math.min(dx/TH,1):0, skipOp=dx<0?Math.min(-dx/TH,1):0;
+  const far=dx>FAR&&onSwipeRightFar;
+  const rOp=dx>0?Math.min(dx/NEAR,1):0, lOp=dx<0?Math.min(-dx/NEAR,1):0;
+  const rLabel=far?L.far:L.near, rColor=far?'#ED5A2A':'#0E865B';
+  const rBg=far?'linear-gradient(90deg,#FFE0CF 0%,#FFF4EC 60%)':'linear-gradient(90deg,#D6F5E6 0%,#F4FBF7 60%)';
   return(
     <div style={{position:'relative',borderRadius:20,overflow:'hidden'}}>
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',
-        background:dx>0?'linear-gradient(90deg,#D6F5E6 0%,#F4FBF7 60%)':dx<0?'linear-gradient(90deg,#F6F6FA 40%,#ECEDF6 100%)':'transparent'}}>
-        <span style={{opacity:saveOp,display:'inline-flex',alignItems:'center',gap:6,color:'#0E865B',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>＋ Save</span>
-        <span style={{opacity:skipOp,display:'inline-flex',alignItems:'center',gap:6,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>Skip ✕</span>
+        background:dx>0?rBg:dx<0?'linear-gradient(90deg,#F6F6FA 40%,#ECEDF6 100%)':'transparent'}}>
+        <span style={{opacity:rOp,display:'inline-flex',alignItems:'center',gap:6,color:rColor,fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15,transition:'color .12s'}}>{rLabel}</span>
+        <span style={{opacity:lOp,display:'inline-flex',alignItems:'center',gap:6,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>{L.left}</span>
       </div>
       <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-        style={{transform:`translateX(${dx}px) rotate(${dx*0.018}deg)`,transition:anim?'transform .19s ease':'none',touchAction:'pan-y',position:'relative'}}>
+        style={{transform:`translateX(${dx}px) rotate(${dx*0.016}deg)`,transition:anim?'transform .19s ease':'none',touchAction:'pan-y',position:'relative'}}>
         {children}
       </div>
     </div>
@@ -1172,7 +1180,8 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
       )}
       {featured&&(
       <div style={{padding:'0 18px 6px'}}>
-        <div onClick={()=>push({type:'place',id:featured.id})} style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
+        <SwipeCard onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(featured)} onSwipeLeft={()=>onDismiss&&onDismiss(featured.id)} onTap={()=>push({type:'place',id:featured.id})}>
+        <div style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
           <div style={{height:136,background:featured.catGrad,position:'relative',padding:14}}>
             <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.9)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
               <StarIco size={13} color="#ED5A2A"/> {featScore?`Top match · ${featScore}%`:'Top pick for you'}
@@ -1202,6 +1211,7 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
             </button>
           </div>
         </div>
+        </SwipeCard>
       </div>
       )}
       {list.length>0&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you · <span style={{fontWeight:500,color:'#9092AD'}}>swipe to save or skip</span></div>}
@@ -1378,7 +1388,7 @@ function NearScreen({push,filter,setFilter,onSaveNear}) {
 }
 
 /* ── ANCHORS ── */
-function AnchorsScreen({push,trip}){
+function AnchorsScreen({push,trip,onUnanchor}){
   const anchored=anchoredRefs(trip).map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
   const ancCount=anchored.length;
   return(
@@ -1435,7 +1445,7 @@ function AnchorsScreen({push,trip}){
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.10em',textTransform:'uppercase',marginBottom:12}}>All anchored places</div>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {anchored.map(({ref,d})=>(
-                <div key={ref.kind+ref.id} onClick={()=>ref.kind==='curated'?push({type:'place',id:ref.id}):push({type:'scratch'})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                <div key={ref.kind+ref.id} onClick={()=>ref.kind==='curated'?push({type:'place',id:ref.id}):push({type:'scratch'})} style={{display:'flex',alignItems:'center',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
                   <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:d.catGrad}}/>
                   <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
                     <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1}}>{d.name}</div>
@@ -1445,7 +1455,10 @@ function AnchorsScreen({push,trip}){
                       {ref.kind==='scratch'&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,color:'#9092AD'}}>from scratchpad</span>}
                     </div>
                   </div>
-                  <ChevRight/>
+                  <button onClick={e=>{e.stopPropagation();onUnanchor&&onUnanchor(ref);}} aria-label="Remove anchor" title="Remove anchor"
+                    style={{flexShrink:0,width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',color:'#D8553C',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
                 </div>
               ))}
             </div>
@@ -1465,8 +1478,7 @@ function AnchorsScreen({push,trip}){
 /* ── GOOGLE LIVE RESULT CARD ── */
 function GoogleResultCard({p}){
   return(
-    <a href={p.googleUrl||'#'} target="_blank" rel="noopener noreferrer"
-      style={{display:'block',textDecoration:'none',background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)'}}>
+    <div style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
       <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
         <div style={{width:44,height:44,borderRadius:12,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center'}}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -1491,15 +1503,16 @@ function GoogleResultCard({p}){
           {p.hours&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#6C6E8E',marginTop:3}}>{p.hours}</div>}
         </div>
       </div>
-    </a>
+    </div>
   );
 }
 
 /* ── SEARCH ── */
-function SearchScreen({push}) {
+function SearchScreen({push,onStash}) {
   const [mode,setMode]=useState('saved'); // 'saved' | 'live'
   const [q,setQ]=useState('');
   const [live,setLive]=useState({loading:false,places:[],error:null,for:''});
+  const [hidden,setHidden]=useState({}); // keys swiped away this search
 
   // Live Google search — debounced, fails soft.
   useEffect(()=>{
@@ -1510,11 +1523,13 @@ function SearchScreen({push}) {
     const t=setTimeout(()=>{
       API.places(term,'',12).then(res=>{
         if(dead) return;
+        setHidden({});
         setLive({loading:false,places:res.places||[],error:res.error?(res.message||'Search failed'):null,for:term});
       });
     },450);
     return ()=>{dead=true;clearTimeout(t);};
   },[mode,q]);
+  const liveVisible=live.places.map((p,i)=>({p,key:(p.googleUrl||p.name||'r')+i})).filter(x=>!hidden[x.key]);
 
   const allPlaces=Object.keys(PLACES).map(bp);
   const results=mode!=='saved'||q.length<2?[]:allPlaces.filter(p=>{
@@ -1581,17 +1596,34 @@ function SearchScreen({push}) {
                 <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No Tokyo results for "{q.trim()}"</div>
               </div>
             )}
-            {!live.loading&&!live.error&&live.places.length>0&&(
+            {!live.loading&&!live.error&&liveVisible.length>0&&(
               <>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:10}}>
-                  <span>{live.places.length} live results</span>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:6}}>
+                  <span>{liveVisible.length} live results</span>
                   <span style={{color:'#D5D6E4'}}>·</span>
                   <span style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5}}>Google</span>
                 </div>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:11,background:'#F1EEFF',borderRadius:12,padding:'9px 12px'}}>
+                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#5A48D6',lineHeight:1.4}}>Swipe <b>right</b> → scratchpad · <b>far right</b> → ⚓ anchor · <b>left</b> → skip</span>
+                </div>
                 <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                  {live.places.map((p,i)=><GoogleResultCard key={(p.googleUrl||p.name)+i} p={p}/>)}
+                  {liveVisible.map(({p,key})=>(
+                    <SwipeCard key={key}
+                      labels={{near:'＋ Scratchpad',far:'⚓ Anchor',left:'Skip ✕'}}
+                      onSwipeRight={()=>{onStash&&onStash(p,'idea'); setHidden(h=>({...h,[key]:1}));}}
+                      onSwipeRightFar={()=>{onStash&&onStash(p,'anchored'); setHidden(h=>({...h,[key]:1}));}}
+                      onSwipeLeft={()=>setHidden(h=>({...h,[key]:1}))}
+                      onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
+                      <GoogleResultCard p={p}/>
+                    </SwipeCard>
+                  ))}
                 </div>
               </>
+            )}
+            {!live.loading&&!live.error&&live.places.length>0&&liveVisible.length===0&&(
+              <div style={{padding:'30px 6px',textAlign:'center'}}>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>All sorted — search again to find more.</div>
+              </div>
             )}
           </div>
         )}
@@ -2164,10 +2196,13 @@ function App(){
   };
   const dismissDiscover=id=>persist({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),id]});
   const resetDismissed=()=>persist({...trip,dismissedPlaces:[]});
-  // Near swipe-free save: stash a live nearby place into the scratchpad.
-  const saveNearby=p=>addScratch({id:'s'+Date.now(),status:'idea',note:'',addedAt:Date.now(),
+  // Stash a live (Google) place into the scratchpad — status 'idea' or 'anchored'.
+  const stashLive=(p,status='idea')=>addScratch({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),status,note:'',addedAt:Date.now(),
     name:p.name,area:p.area,rating:p.rating,reviews:p.reviews,openNow:p.openNow,budget:p.budget,
     hours:p.hours,address:p.address,category:p.category,googleUrl:p.googleUrl,coords:p.coords});
+  const saveNearby=p=>stashLive(p,'idea');
+  // Remove an anchor: curated toggles off; a scratch place reverts to an idea (kept in scratchpad).
+  const unanchor=ref=>{ if(ref.kind==='curated') handleAnchorPlace(ref.id); else anchorScratch(ref.id); };
 
   const addToDay=(dayIndex,ref)=>{
     const it={...(trip.itinerary||{})};
@@ -2206,8 +2241,8 @@ function App(){
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onSaveToScratch={saveDiscover} onDismiss={dismissDiscover} onResetDismiss={resetDismissed}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby}/>}
-        {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip}/>}
-        {tab==='search'   &&<SearchScreen push={push}/>}
+        {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
