@@ -1034,10 +1034,58 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
 }
 
 /* ── DISCOVER ── */
-function DiscoverScreen({push}) {
+/* ── SOURCE LINKS ── */
+function sourceUrls(name,area,googleUrl){
+  const q=encodeURIComponent(`${name} ${area||''} Tokyo`.trim());
+  return {
+    google:googleUrl||`https://www.google.com/maps/search/?api=1&query=${q}`,
+    yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' Tokyo').trim())}`,
+    tabelog:`https://tabelog.com/en/rst/rstsearch/?sw=${encodeURIComponent(name)}`,
+  };
+}
+function SourceLinks({name,area,googleUrl,label=true}){
+  const u=sourceUrls(name,area,googleUrl);
+  const items=[
+    {k:'Google',href:u.google,color:'#4285F4'},
+    {k:'Yelp',href:u.yelp,color:'#D32323'},
+    {k:'Tabelog',href:u.tabelog,color:'#C9A24B',jp:'食'},
+  ];
+  return(
+    <div>
+      {label&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#9092AD',marginBottom:7}}>Read reviews</div>}
+      <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+        {items.map(it=>(
+          <a key={it.k} href={it.href} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+            style={{display:'inline-flex',alignItems:'center',gap:6,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:999,padding:'7px 12px',textDecoration:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,color:'#4E5072'}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:it.color,flexShrink:0}}/>{it.jp?it.jp+' ':''}{it.k}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DiscoverScreen({push,trip,onAnchorPlace}) {
   const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
-  const featured=bp('omoide');
-  const list=['blue','nezu','yoyogi'].map(bp);
+  const pool=useMemo(()=>getSuggestions(trip.prefs||[],7,[]),[JSON.stringify(trip.prefs)]);
+  const [ai,setAi]=useState(null);
+  const prefsKey=JSON.stringify(trip.prefs||[]);
+  useEffect(()=>{
+    let dead=false;
+    API.suggest(trip.prefs||[],pool).then(ranked=>{
+      if(dead) return;
+      if(ranked&&ranked.length){const m={};ranked.forEach(r=>{if(PLACES[r.id])m[r.id]=r;});setAi(m);}
+      else setAi(null);
+    });
+    return ()=>{dead=true;};
+  },[prefsKey]); // eslint-disable-line
+  const ordered=ai?[...pool].sort((a,b)=>((ai[b.id]?.score||0)-(ai[a.id]?.score||0))):pool;
+  const reasonFor=p=>(ai&&ai[p.id]&&ai[p.id].reason)||p.reason||p.note||p.digest||'';
+  const featured=ordered[0];
+  const list=ordered.slice(1,5);
+  const featAnc=featured&&(trip.anchoredPlaces||[]).includes(featured.id);
+  const featScore=featured&&ai&&ai[featured.id]&&ai[featured.id].score;
   return (
     <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
       <div style={{padding:'16px 18px 8px'}}>
@@ -1051,11 +1099,12 @@ function DiscoverScreen({push}) {
           </span>
         ))}
       </div>
+      {featured&&(
       <div style={{padding:'0 18px 6px'}}>
-        <div onClick={()=>push({type:'place',id:'omoide'})} style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
+        <div onClick={()=>push({type:'place',id:featured.id})} style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
           <div style={{height:136,background:featured.catGrad,position:'relative',padding:14}}>
             <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.9)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
-              <StarIco size={13} color="#ED5A2A"/> Top match · 96%
+              <StarIco size={13} color="#ED5A2A"/> {featScore?`Top match · ${featScore}%`:'Top pick for you'}
             </span>
             <div style={{position:'absolute',right:14,bottom:14,display:'flex',gap:7,alignItems:'center'}}>
               <StatusPill openNow={featured.openNow} small/>
@@ -1073,33 +1122,38 @@ function DiscoverScreen({push}) {
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:3}}>{featured.station}</div>
             <div style={{display:'flex',gap:9,marginTop:10,background:'#FFF1EA',borderRadius:14,padding:'12px 13px'}}>
               <SparkleIco size={17} color="#FB7242"/>
-              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.45}}>{featured.reason}</div>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.45}}>{reasonFor(featured)}</div>
             </div>
-            <button style={{marginTop:12,width:'100%',border:'none',background:'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:'#fff',fontWeight:600,fontSize:15,padding:13,borderRadius:14,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:'0 6px 18px rgba(248,87,166,0.32)'}}>
-              <AnchorIco size={17} color="#fff"/> Anchor it
+            <div style={{marginTop:12}}><SourceLinks name={featured.name} area={featured.area}/></div>
+            <button onClick={e=>{e.stopPropagation();onAnchorPlace&&onAnchorPlace(featured.id);}} style={{marginTop:13,width:'100%',border:'none',background:featAnc?'#F1EEFF':'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:featAnc?'#5A48D6':'#fff',fontWeight:600,fontSize:15,padding:13,borderRadius:14,cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,boxShadow:featAnc?'none':'0 6px 18px rgba(248,87,166,0.32)'}}>
+              <AnchorIco size={17} color={featAnc?'#5A48D6':'#fff'}/> {featAnc?'Anchored ✓':'Anchor it'}
             </button>
           </div>
         </div>
       </div>
+      )}
       <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#6C6E8E',padding:'14px 18px 8px'}}>More that fit you</div>
       <div style={{display:'flex',flexDirection:'column',gap:12,padding:'0 18px 24px'}}>
         {list.map(p=>(
-          <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{display:'flex',gap:13,background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
-            <div style={{width:80,height:80,borderRadius:14,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:7}}>
-              <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
-                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
-                <BudgetBadge budget={p.budget}/>
+          <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+            <div style={{display:'flex',gap:13}}>
+              <div style={{width:80,height:80,borderRadius:14,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:7}}>
+                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
               </div>
-              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.station}</div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
-                <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
-                <StatusPill openNow={p.openNow} small/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
+                  <BudgetBadge budget={p.budget}/>
+                </div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.station}</div>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+                  <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+                  <StatusPill openNow={p.openNow} small/>
+                </div>
               </div>
-              {p.reason&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.4,marginTop:7,fontStyle:'italic'}}>{p.reason}</div>}
             </div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>
+            <div style={{marginTop:10}}><SourceLinks name={p.name} area={p.area} label={false}/></div>
           </div>
         ))}
       </div>
@@ -1818,6 +1872,8 @@ function PlaceDetailOverlay({id,pop,push,trip,onAnchorPlace}) {
           <BudgetBadge budget={d.budget}/>
         </div>
 
+        <div style={{marginTop:16}}><SourceLinks name={d.name} area={d.area}/></div>
+
         {/* Info cards */}
         <div style={{display:'flex',gap:9,marginTop:16}}>
           <div style={{flex:1,background:'#fff',borderRadius:14,padding:'11px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
@@ -1990,7 +2046,7 @@ function App(){
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
-        {tab==='discover' &&<DiscoverScreen push={push}/>}
+        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip}/>}
         {tab==='search'   &&<SearchScreen push={push}/>}
