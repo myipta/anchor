@@ -21,6 +21,7 @@ body{font-family:'Hanken Grotesk',sans-serif;background:#FAFAFD;display:flex;jus
 button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
 input,textarea{font-family:'Hanken Grotesk',sans-serif}
 @keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes photoIn{from{opacity:0}to{opacity:1}}
 @keyframes anchorBlink{0%,100%{opacity:.3}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){@keyframes slideIn{from{transform:none}to{transform:none}}}
 </style>
@@ -183,6 +184,14 @@ const API={
       return {places:Array.isArray(d.places)?d.places:[],center:d.center};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
+  async photo(name,area){
+    try{
+      const r=await fetch('/api/photo?'+new URLSearchParams({name:name||'',area:area||''}));
+      if(!r.ok) return null;
+      const d=await r.json();
+      return d.url||null;
+    }catch{return null;}
+  },
   async parsePlace(text){
     try{
       const r=await fetch('/api/parse-place',{method:'POST',headers:{'content-type':'application/json'},
@@ -247,6 +256,43 @@ function anchoredRefs(trip){
 function bp(id) {
   const p=PLACES[id], c=CATS[p.cat]||CATS.nbhd;
   return {id,catLabel:c.label,catGrad:c.grad,...p};
+}
+
+/* ── PLACE PHOTOS ── Wikipedia first, Google fallback; cached in-memory + localStorage. */
+const _photoMem={};
+function usePlacePhoto(name,area){
+  const key=(name||'')+'|'+(area||'');
+  const [url,setUrl]=useState(()=> key in _photoMem ? _photoMem[key] : undefined);
+  useEffect(()=>{
+    if(!name){return;}
+    if(key in _photoMem){ setUrl(_photoMem[key]); return; }
+    let ls={}; try{ls=JSON.parse(localStorage.getItem('photo_v1')||'{}');}catch{}
+    if(key in ls){ _photoMem[key]=ls[key]; setUrl(ls[key]); return; }
+    let dead=false;
+    API.photo(name,area).then(u=>{
+      if(dead) return;
+      _photoMem[key]=u||null; setUrl(u||null);
+      try{const cur=JSON.parse(localStorage.getItem('photo_v1')||'{}'); cur[key]=u||null; localStorage.setItem('photo_v1',JSON.stringify(cur));}catch{}
+    });
+    return ()=>{dead=true;};
+  },[key]); // eslint-disable-line
+  return url; // undefined while loading, string when found, null when none
+}
+
+// Coloured gradient tile that swaps in a real photo once loaded. Pass-through children render on top.
+function Photo({name,area,grad,style,scrim,placeholder,children}){
+  const url=usePlacePhoto(name,area);
+  const [ok,setOk]=useState(true);
+  const show=url&&ok;
+  return(
+    <div style={{position:'relative',overflow:'hidden',background:grad,...style}}>
+      {show&&<img src={url} alt="" loading="lazy" onError={()=>setOk(false)}
+        style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',opacity:0,animation:'photoIn .4s ease forwards'}}/>}
+      {show&&scrim&&<div style={{position:'absolute',inset:0,background:scrim,pointerEvents:'none'}}/>}
+      {!show&&placeholder}
+      {children}
+    </div>
+  );
 }
 
 function sc(openNow) {
@@ -1182,15 +1228,15 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
       <div style={{padding:'0 18px 6px'}}>
         <SwipeCard onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(featured)} onSwipeLeft={()=>onDismiss&&onDismiss(featured.id)} onTap={()=>push({type:'place',id:featured.id})}>
         <div style={{borderRadius:24,overflow:'hidden',background:'#fff',boxShadow:'0 4px 8px rgba(22,23,42,0.05),0 18px 40px rgba(22,23,42,0.10)',cursor:'pointer'}}>
-          <div style={{height:136,background:featured.catGrad,position:'relative',padding:14}}>
-            <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.9)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
+          <Photo name={featured.name} area={featured.area} grad={featured.catGrad} scrim="linear-gradient(180deg,rgba(0,0,0,0.06) 0%,rgba(0,0,0,0.30) 100%)" style={{height:136,padding:14}}>
+            <span style={{position:'relative',display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.92)',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#ED5A2A'}}>
               <StarIco size={13} color="#ED5A2A"/> {featScore?`Top match · ${featScore}%`:'Top pick for you'}
             </span>
             <div style={{position:'absolute',right:14,bottom:14,display:'flex',gap:7,alignItems:'center'}}>
               <StatusPill openNow={featured.openNow} small/>
               <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'rgba(255,255,255,0.92)',background:'rgba(0,0,0,0.16)',padding:'5px 9px',borderRadius:8}}>{featured.area}</span>
             </div>
-          </div>
+          </Photo>
           <div style={{padding:'14px 16px 16px'}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
               <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,color:'#16172A',letterSpacing:'-0.01em',flex:1}}>{featured.name}</div>
@@ -1220,9 +1266,9 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
           <SwipeCard key={p.id} onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(p)} onSwipeLeft={()=>onDismiss&&onDismiss(p.id)} onTap={()=>push({type:'place',id:p.id})}>
           <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
             <div style={{display:'flex',gap:13}}>
-              <div style={{width:80,height:80,borderRadius:14,flexShrink:0,background:p.catGrad,display:'flex',alignItems:'flex-end',padding:7}}>
-                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
-              </div>
+              <Photo name={p.name} area={p.area} grad={p.catGrad} scrim="linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,0.32) 100%)" style={{width:80,height:80,borderRadius:14,flexShrink:0,display:'flex',alignItems:'flex-end',padding:7}}>
+                <span style={{position:'relative',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
+              </Photo>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
@@ -1358,9 +1404,9 @@ function NearScreen({push,filter,setFilter,onSaveNear}) {
           <div style={{display:'flex',flexDirection:'column',gap:10,padding:'0 18px 24px'}}>
             {places.map((n,i)=>(
               <div key={(n.googleUrl||n.name)+i} onClick={()=>n.googleUrl&&window.open(n.googleUrl,'_blank','noopener')} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
-                <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",color:'#fff',lineHeight:1.1}}>
-                  <span style={{fontSize:13,fontWeight:700}}>{fmtDist(n.meters)}</span>
-                </div>
+                <Photo name={n.name} area={n.area} grad="linear-gradient(135deg,#8B72FB,#6C5CE7)" scrim="rgba(0,0,0,0.36)" style={{width:52,height:52,borderRadius:13,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",color:'#fff',lineHeight:1.1}}>
+                  <span style={{position:'relative',fontSize:13,fontWeight:700,textShadow:'0 1px 3px rgba(0,0,0,0.5)'}}>{fmtDist(n.meters)}</span>
+                </Photo>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.name}</div>
                   <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
@@ -1480,9 +1526,8 @@ function GoogleResultCard({p}){
   return(
     <div style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
       <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-        <div style={{width:44,height:44,borderRadius:12,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/></svg>
-        </div>
+        <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" style={{width:44,height:44,borderRadius:12,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}
+          placeholder={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/></svg>}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
             <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
@@ -2019,7 +2064,7 @@ function PlaceDetailOverlay({id,pop,push,trip,onAnchorPlace}) {
   const detailPins=[{id:d.id,x:52,y:46,kind:isAnc?'anchor':'suggest',big:true,label:d.area}];
   return (
     <div style={{position:'absolute',inset:0,zIndex:40,background:'#FAFAFD',overflowY:'auto',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
-      <div style={{height:248,background:d.catGrad,position:'relative',flexShrink:0}}>
+      <Photo name={d.name} area={d.area} grad={d.catGrad} scrim="linear-gradient(180deg,rgba(0,0,0,0.12) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0.28) 100%)" style={{height:248,flexShrink:0}}>
         <div style={{position:'absolute',top:16,left:16,right:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <button onClick={pop} style={{width:40,height:40,borderRadius:'50%',border:'none',background:'rgba(255,255,255,0.92)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 8px rgba(22,23,42,0.16)'}}>
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#232540" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -2032,7 +2077,7 @@ function PlaceDetailOverlay({id,pop,push,trip,onAnchorPlace}) {
           <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.92)',borderRadius:999,padding:'5px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#353756'}}>{d.catLabel}</span>
           {isAnc&&<span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#FFE2D4',color:'#ED5A2A',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:11,letterSpacing:'0.04em',textTransform:'uppercase',padding:'4px 9px',borderRadius:999}}><AnchorIco size={10} color="#ED5A2A"/> Anchor</span>}
         </div>
-      </div>
+      </Photo>
 
       <div style={{padding:'18px 18px 0'}}>
         <div style={{display:'flex',alignItems:'flex-start',gap:10,justifyContent:'space-between'}}>
