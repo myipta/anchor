@@ -520,17 +520,28 @@ function DraftPill({children}){
 }
 
 function ChatOnboarding({onComplete,onSkip}){
-  const [messages,setMessages]=useState([{role:'assistant',content:"Hey — I'm Anchor. 🗼 I'll help you shape your Tokyo trip. To start: when are you thinking of going?"}]);
+  const [messages,setMessages]=useState([{role:'assistant',content:"Hey — I'm Anchor. 🗼 Let's shape your Tokyo trip. Tap “📅 Set travel dates” up top to pick your dates, then tell me about the trip."}]);
   const [draft,setDraft]=useState({});
   const [input,setInput]=useState('');
   const [loading,setLoading]=useState(false);
-  const [chips,setChips]=useState(['Next month','This summer','Not sure yet']);
+  const [chips,setChips]=useState([]);
   const [ready,setReady]=useState(false);
   const [error,setError]=useState(null);
+  const [showDates,setShowDates]=useState(false);
+  const [dArr,setDArr]=useState('');
+  const [dNights,setDNights]=useState(4);
   const scrollRef=React.useRef(null);
-  useEffect(()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;},[messages,loading,error]);
+  useEffect(()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;},[messages,loading,error,showDates]);
 
   const hasDraft=draft.arrivalDate||draft.hotelName||(draft.prefs&&draft.prefs.length);
+
+  const openDates=()=>{ setDArr(draft.arrivalDate||''); setDNights(draft.nights||4); setShowDates(true); };
+  const saveDates=()=>{
+    if(!dArr) return;
+    const merged={...draft,arrivalDate:dArr,nights:dNights};
+    setDraft(merged); setShowDates(false); setReady(true); setChips([]);
+    setMessages(m=>[...m,{role:'assistant',content:`Locked in 📅 ${fmtDate(dArr)}–${fmtDate(addDays(dArr,dNights))} · ${dNights} ${dNights===1?'night':'nights'}. Where are you staying, or what kind of trip are you after?`}]);
+  };
 
   const send=async(text)=>{
     const t=(text!=null?text:input).trim();
@@ -567,13 +578,13 @@ function ChatOnboarding({onComplete,onSkip}){
           </div>
           <button onClick={onSkip} style={{border:'none',background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.85)',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:12.5,padding:'6px 12px',borderRadius:999,cursor:'pointer'}}>Skip</button>
         </div>
-        {hasDraft&&(
-          <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:12}}>
-            {draft.arrivalDate&&<DraftPill>📅 {fmtDate(draft.arrivalDate)} · {draft.nights||'?'} nights</DraftPill>}
-            {draft.hotelName&&<DraftPill>🏨 {draft.hotelName}{draft.hotelArea?' · '+draft.hotelArea:''}</DraftPill>}
-            {draft.prefs&&draft.prefs.length>0&&<DraftPill>{draft.prefs.slice(0,5).map(id=>((PREF_OPTS.find(p=>p.id===id)||{}).emoji)||'•').join(' ')} {draft.prefs.length} vibes</DraftPill>}
-          </div>
-        )}
+        <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:12,alignItems:'center'}}>
+          {draft.arrivalDate
+            ? <button onClick={openDates} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.14)',color:'#fff',border:'none',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,cursor:'pointer'}}>📅 {fmtDate(draft.arrivalDate)} · {draft.nights||'?'} nights ✎</button>
+            : <button onClick={openDates} style={{display:'inline-flex',alignItems:'center',gap:7,background:'#fff',color:'#2D1B69',border:'none',borderRadius:999,padding:'8px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:700,cursor:'pointer'}}>📅 Set travel dates</button>}
+          {draft.hotelName&&<DraftPill>🏨 {draft.hotelName}{draft.hotelArea?' · '+draft.hotelArea:''}</DraftPill>}
+          {draft.prefs&&draft.prefs.length>0&&<DraftPill>{draft.prefs.slice(0,5).map(id=>((PREF_OPTS.find(p=>p.id===id)||{}).emoji)||'•').join(' ')} {draft.prefs.length} vibes</DraftPill>}
+        </div>
       </div>
 
       <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'18px 16px',display:'flex',flexDirection:'column',gap:12}}>
@@ -601,7 +612,26 @@ function ChatOnboarding({onComplete,onSkip}){
       </div>
 
       <div style={{flexShrink:0,padding:'10px 14px 22px',background:'#FAFAFD',borderTop:'1px solid #ECEDF6'}}>
-        {ready&&(
+        {showDates&&(
+          <div style={{background:'#fff',border:'1.5px solid #E3E5F0',borderRadius:16,padding:'14px',marginBottom:10,boxShadow:'0 -2px 12px rgba(22,23,42,0.06)'}}>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',marginBottom:11}}>Travel dates</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',marginBottom:7,letterSpacing:'0.06em',textTransform:'uppercase'}}>Arriving</div>
+            <input type="date" value={dArr} min={todayStr()} onChange={e=>setDArr(e.target.value)}
+              style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:12,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:16,color:'#16172A',background:'#fff',outline:'none'}}/>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',margin:'12px 0 7px',letterSpacing:'0.06em',textTransform:'uppercase'}}>Nights</div>
+            <div style={{display:'flex',alignItems:'center',gap:14,border:'1.5px solid #E3E5F0',borderRadius:12,padding:'8px 14px'}}>
+              <button onClick={()=>setDNights(n=>Math.max(1,n-1))} style={{width:34,height:34,borderRadius:'50%',border:'1.5px solid #E3E5F0',background:'#fff',fontSize:20,cursor:'pointer',color:'#6C5CE7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>−</button>
+              <div style={{flex:1,textAlign:'center'}}><span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:26,color:'#16172A'}}>{dNights}</span><span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginLeft:7}}>nights</span></div>
+              <button onClick={()=>setDNights(n=>Math.min(30,n+1))} style={{width:34,height:34,borderRadius:'50%',border:'1.5px solid #E3E5F0',background:'#fff',fontSize:20,cursor:'pointer',color:'#6C5CE7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>+</button>
+            </div>
+            {dArr&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',marginTop:10,fontWeight:600}}>{fmtDateLong(dArr)} → {fmtDateLong(addDays(dArr,dNights))}</div>}
+            <div style={{display:'flex',gap:9,marginTop:12}}>
+              <button onClick={()=>setShowDates(false)} style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#6C6E8E',fontWeight:600,fontSize:14.5,padding:'11px 16px',borderRadius:12,cursor:'pointer'}}>Cancel</button>
+              <button onClick={saveDates} disabled={!dArr} style={{flex:1,border:'none',borderRadius:12,background:dArr?'#6C5CE7':'#E3E5F0',color:'#fff',fontWeight:700,fontSize:14.5,padding:'11px',cursor:dArr?'pointer':'default'}}>Set dates</button>
+            </div>
+          </div>
+        )}
+        {ready&&!showDates&&(
           <button onClick={()=>onComplete(draft)} style={{width:'100%',marginBottom:10,border:'none',borderRadius:14,background:'linear-gradient(135deg,#6C5CE7,#FB7242)',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,padding:'13px',cursor:'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.32)'}}>Review &amp; finish setup →</button>
         )}
         {chips.length>0&&!loading&&(
