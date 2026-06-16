@@ -13,8 +13,9 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;height:100dvh}
-body{font-family:'Hanken Grotesk',sans-serif;background:#DDE0EB;display:flex;justify-content:center}
-#root{width:100%;max-width:430px;min-height:100dvh;background:#FAFAFD;position:relative;display:flex;flex-direction:column;overflow:hidden}
+body{font-family:'Hanken Grotesk',sans-serif;background:#FAFAFD;display:flex;justify-content:center}
+@media(min-width:431px){body{background:#DDE0EB}}
+#root{width:100%;max-width:430px;min-height:100dvh;background:#FAFAFD;position:relative;display:flex;flex-direction:column;overflow:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 ::-webkit-scrollbar{width:0;height:0}
 *{scrollbar-width:none;-ms-overflow-style:none}
 button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
@@ -217,6 +218,12 @@ function unscheduledPool(trip){
   (trip.anchoredPlaces||[]).forEach(id=>{ if(!isScheduled(trip,'curated',id)) pool.push({kind:'curated',id}); });
   (trip.scratchpad||[]).forEach(s=>{ if(!isScheduled(trip,'scratch',s.id)) pool.push({kind:'scratch',id:s.id}); });
   return pool;
+}
+// Everything the traveler has anchored: curated places + scratchpad items marked anchored.
+function anchoredRefs(trip){
+  const refs=(trip.anchoredPlaces||[]).map(id=>({kind:'curated',id}));
+  (trip.scratchpad||[]).forEach(s=>{ if(s.status==='anchored') refs.push({kind:'scratch',id:s.id}); });
+  return refs;
 }
 
 function bp(id) {
@@ -1173,7 +1180,8 @@ function NearScreen({push,filter,setFilter}) {
 
 /* ── ANCHORS ── */
 function AnchorsScreen({push,trip}){
-  const ancCount=trip.anchoredPlaces?.length||0;
+  const anchored=anchoredRefs(trip).map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
+  const ancCount=anchored.length;
   return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
@@ -1227,22 +1235,20 @@ function AnchorsScreen({push,trip}){
           <div style={{marginTop:8}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#9092AD',letterSpacing:'0.10em',textTransform:'uppercase',marginBottom:12}}>All anchored places</div>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {(trip.anchoredPlaces||[]).map(pid=>{
-                const p=bp(pid);
-                return(
-                  <div key={pid} onClick={()=>push({type:'place',id:pid})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
-                    <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:p.catGrad}}/>
-                    <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
-                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4,flexWrap:'wrap'}}>
-                        <StatusPill openNow={p.openNow} small/>
-                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
-                      </div>
+              {anchored.map(({ref,d})=>(
+                <div key={ref.kind+ref.id} onClick={()=>ref.kind==='curated'?push({type:'place',id:ref.id}):push({type:'scratch'})} style={{display:'flex',gap:12,background:'#fff',borderRadius:18,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+                  <div style={{width:52,height:52,borderRadius:13,flexShrink:0,background:d.catGrad}}/>
+                  <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+                    <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',lineHeight:1.1}}>{d.name}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:7,marginTop:4,flexWrap:'wrap'}}>
+                      {d.openNow&&<StatusPill openNow={d.openNow} small/>}
+                      <Ratings rating={d.rating} tabelogRating={d.tabelogRating}/>
+                      {ref.kind==='scratch'&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,color:'#9092AD'}}>from scratchpad</span>}
                     </div>
-                    <ChevRight/>
                   </div>
-                );
-              })}
+                  <ChevRight/>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -1905,7 +1911,7 @@ const NAV=[{id:'today',label:'Today'},{id:'discover',label:'Discover'},{id:'near
 
 function BottomNav({tab,setTab}) {
   return (
-    <div style={{flexShrink:0,display:'flex',padding:'8px 2px 20px',background:'rgba(255,255,255,0.86)',backdropFilter:'blur(18px)',borderTop:'1px solid #ECEDF6',zIndex:20}}>
+    <div style={{flexShrink:0,display:'flex',padding:'8px 2px 10px',background:'rgba(255,255,255,0.86)',backdropFilter:'blur(18px)',borderTop:'1px solid #ECEDF6',zIndex:20}}>
       {NAV.map(t=>{
         const on=tab===t.id;
         return (
