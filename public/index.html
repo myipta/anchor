@@ -26,7 +26,7 @@ input,textarea{font-family:'Hanken Grotesk',sans-serif}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useMemo} = React;
+const {useState,useMemo,useEffect} = React;
 
 /* ── DATA ── */
 const CATS = {
@@ -142,6 +142,28 @@ function getSuggestions(prefs,count=2,exclude=[]){
   const use=matches.length>=count?matches:[...matches,...pool.filter(id=>!matches.includes(id))];
   return use.slice(0,count).map(bp);
 }
+
+/* ── API CLIENT ── (same-origin Cloudflare Worker; all calls fail soft) */
+const API={
+  async suggest(prefs,places){
+    try{
+      const r=await fetch('/api/suggest',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({prefs,places:places.map(p=>({id:p.id,name:p.name,area:p.area,cat:p.catLabel||p.cat,digest:p.digest||p.note||p.reason||''}))})});
+      if(!r.ok) return null;
+      const d=await r.json();
+      return Array.isArray(d.ranked)&&d.ranked.length?d.ranked:null;
+    }catch{return null;}
+  },
+  async places(query,area,limit=10){
+    try{
+      const r=await fetch('/api/places',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({query,area,limit})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
+      return {places:Array.isArray(d.places)?d.places:[]};
+    }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
+  },
+};
 
 function bp(id) {
   const p=PLACES[id], c=CATS[p.cat]||CATS.nbhd;
@@ -378,7 +400,9 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
                       <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                         <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F1EEFF',color:'#5A48D6',
                           fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:11,letterSpacing:'0.04em',
-                          textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>Suggested</span>
+                          textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>
+                          {s.aiPick&&<SparkleIco size={11} color="#5A48D6"/>}{s.aiPick?'AI pick':'Suggested'}
+                        </span>
                         <StatusPill openNow={s.openNow} small/>
                       </div>
                       <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
@@ -390,7 +414,7 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
                   </div>
                   <div style={{display:'flex',gap:9,padding:'0 14px 12px'}}>
                     <SparkleIco size={16} color="#8B72FB"/>
-                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.45,fontStyle:'italic'}}>{s.reason}</div>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.45,fontStyle:'italic',opacity:s.aiLoading?0.5:1}}>{s.aiLoading?'Finding your best fits…':s.reason}</div>
                   </div>
                   {s.added?(
                     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,
@@ -618,11 +642,31 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
   const viewDay=Math.max(0,Math.min(totalNights-1,dayIndex));
   const todayAnchor=trip.anchors?.[0]||null;
   const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
-  const suggs=useMemo(()=>getSuggestions(trip.prefs||[],2,[]),[JSON.stringify(trip.prefs)]);
+  const active=!isPreTrip&&!isPostTrip;
+
+  // Static candidate pool; Claude ranks it and writes the per-traveler reasons.
+  const pool=useMemo(()=>getSuggestions(trip.prefs||[],8,[]),[JSON.stringify(trip.prefs)]);
+  const [ai,setAi]=useState(null);        // [{id,reason}] top AI picks, or null
+  const [aiLoading,setAiLoading]=useState(false);
+  const prefsKey=JSON.stringify(trip.prefs||[]);
+  useEffect(()=>{
+    if(!active){return;}
+    let dead=false; setAiLoading(true);
+    API.suggest(trip.prefs||[],pool).then(ranked=>{
+      if(dead) return;
+      setAiLoading(false);
+      setAi(ranked?ranked.slice(0,2).map(r=>({id:r.id,reason:r.reason})).filter(x=>PLACES[x.id]):null);
+    });
+    return ()=>{dead=true;};
+  },[active,prefsKey]); // eslint-disable-line
+
+  const suggs=(ai&&ai.length)
+    ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
+    : pool.slice(0,2);
 
   const dayStops=[
     ...(todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',num:1,time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.',hasLine:suggs.length>0}]:[]),
-    ...suggs.map((p,i)=>({...p,kind:'suggest',num:(todayAnchor?2:1)+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id]})),
+    ...suggs.map((p,i)=>({...p,kind:'suggest',num:(todayAnchor?2:1)+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading})),
   ];
   const dayPins=[
     ...(todayAnchor?[{id:'hotel-0',x:55,y:40,num:1,kind:'anchor',label:todayAnchor.area}]:[]),
@@ -991,11 +1035,62 @@ function AnchorsScreen({push,trip}){
   );
 }
 
+/* ── GOOGLE LIVE RESULT CARD ── */
+function GoogleResultCard({p}){
+  return(
+    <a href={p.googleUrl||'#'} target="_blank" rel="noopener noreferrer"
+      style={{display:'block',textDecoration:'none',background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)'}}>
+      <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+        <div style={{width:44,height:44,borderRadius:12,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 20 10.2C20 17.5 12 22 12 22Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
+            <BudgetBadge budget={p.budget}/>
+          </div>
+          {p.category&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.category}</div>}
+          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+            {p.openNow&&<StatusPill openNow={p.openNow} small/>}
+            {p.rating!=null&&(
+              <span style={{display:'inline-flex',alignItems:'center',gap:3}}>
+                <StarIco size={13}/>
+                <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756'}}>{p.rating}</span>
+                {p.reviews!=null&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>({p.reviews})</span>}
+              </span>
+            )}
+          </div>
+          {p.address&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:6,lineHeight:1.4}}>{p.address}</div>}
+          {p.hours&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#6C6E8E',marginTop:3}}>{p.hours}</div>}
+        </div>
+      </div>
+    </a>
+  );
+}
+
 /* ── SEARCH ── */
 function SearchScreen({push}) {
+  const [mode,setMode]=useState('saved'); // 'saved' | 'live'
   const [q,setQ]=useState('');
+  const [live,setLive]=useState({loading:false,places:[],error:null,for:''});
+
+  // Live Google search — debounced, fails soft.
+  useEffect(()=>{
+    if(mode!=='live'||q.trim().length<2){return;}
+    const term=q.trim();
+    let dead=false;
+    setLive(l=>({...l,loading:true,error:null}));
+    const t=setTimeout(()=>{
+      API.places(term,'',12).then(res=>{
+        if(dead) return;
+        setLive({loading:false,places:res.places||[],error:res.error?(res.message||'Search failed'):null,for:term});
+      });
+    },450);
+    return ()=>{dead=true;clearTimeout(t);};
+  },[mode,q]);
+
   const allPlaces=Object.keys(PLACES).map(bp);
-  const results=q.length<2?[]:allPlaces.filter(p=>{
+  const results=mode!=='saved'||q.length<2?[]:allPlaces.filter(p=>{
     const s=(p.name+p.area+p.catLabel+(p.note||'')+(p.reason||'')+(p.digest||'')).toLowerCase();
     return s.includes(q.toLowerCase());
   }).map(p=>{
@@ -1017,29 +1112,75 @@ function SearchScreen({push}) {
   return (
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
-        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD',marginBottom:10}}>Search saved</div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>{mode==='saved'?'Search saved':'Search Tokyo · live'}</div>
+          <div style={{display:'inline-flex',background:'#ECEDF6',borderRadius:999,padding:3}}>
+            {[['saved','Saved'],['live','Tokyo']].map(([k,l])=>(
+              <button key={k} onClick={()=>setMode(k)} style={mode===k?segOn:segBase}>{l}</button>
+            ))}
+          </div>
+        </div>
         <div style={{position:'relative'}}>
           <svg style={{position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}
             width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9092AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Place, neighborhood, dish, note…"
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder={mode==='saved'?'Place, neighborhood, dish, note…':'Ramen, coffee, izakaya, a place name…'}
             style={{width:'100%',border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 40px 12px 42px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
           {q&&<button onClick={()=>setQ('')} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',border:'none',background:'none',color:'#9092AD',fontSize:20,lineHeight:1,padding:2}}>×</button>}
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto'}}>
-        {q.length<2&&(
+        {/* ── LIVE GOOGLE MODE ── */}
+        {mode==='live'&&(
+          <div style={{padding:'12px 18px 24px'}}>
+            {q.trim().length<2&&(
+              <div style={{padding:'30px 6px',textAlign:'center'}}>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search live Tokyo venues from Google — real ratings, hours, and open status.</div>
+              </div>
+            )}
+            {q.trim().length>=2&&live.loading&&(
+              <div style={{padding:'30px 6px',textAlign:'center'}}>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>Searching Tokyo for "{q.trim()}"…</div>
+              </div>
+            )}
+            {q.trim().length>=2&&!live.loading&&live.error&&(
+              <div style={{padding:'24px',textAlign:'center',background:'#FFF1EA',borderRadius:16}}>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.5}}>{live.error}</div>
+              </div>
+            )}
+            {q.trim().length>=2&&!live.loading&&!live.error&&live.places.length===0&&live.for===q.trim()&&(
+              <div style={{padding:'30px 6px',textAlign:'center'}}>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No Tokyo results for "{q.trim()}"</div>
+              </div>
+            )}
+            {!live.loading&&!live.error&&live.places.length>0&&(
+              <>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:10}}>
+                  <span>{live.places.length} live results</span>
+                  <span style={{color:'#D5D6E4'}}>·</span>
+                  <span style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5}}>Google</span>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {live.places.map((p,i)=><GoogleResultCard key={(p.googleUrl||p.name)+i} p={p}/>)}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── SAVED MODE ── */}
+        {mode==='saved'&&q.length<2&&(
           <div style={{padding:'40px 24px',textAlign:'center'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search by name, neighborhood, category, or what a place is known for.</div>
           </div>
         )}
-        {q.length>=2&&results.length===0&&(
+        {mode==='saved'&&q.length>=2&&results.length===0&&(
           <div style={{padding:'40px 24px',textAlign:'center'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No saved places match "{q}"</div>
           </div>
         )}
-        {results.length>0&&(
+        {mode==='saved'&&results.length>0&&(
           <div style={{padding:'10px 18px 24px'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:10}}>{results.length} {results.length===1?'match':'matches'}</div>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
