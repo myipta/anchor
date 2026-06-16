@@ -1197,7 +1197,7 @@ function MatchTag({mp}){
   );
 }
 
-function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onResetDismiss,onLike}) {
+function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,onOptimize,optimizing}) {
   const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
   const prefs=trip.prefs||[];
   const hasPrefs=prefs.length>0;
@@ -1216,7 +1216,7 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
     return ()=>{dead=true;};
   },[prefsKey]); // eslint-disable-line
   const reasonFor=p=>(ai&&ai[p.id]&&ai[p.id].reason)||p.reason||p.note||p.digest||'';
-  const hay=p=>((p.name||'')+' '+(p.catLabel||'')+' '+(p.area||'')+' '+reasonFor(p)).toLowerCase();
+  const hay=p=>((p.name||'')+' '+(p.catLabel||'')+' '+(p.category||'')+' '+(p.area||'')+' '+reasonFor(p)).toLowerCase();
   const matchesAny=(p,tags)=>{const h=hay(p);return tags.some(t=>t&&h.includes(t));};
   const saved=new Set((trip.scratchpad||[]).map(s=>s.sourceId).filter(Boolean));
   const anchored=new Set(trip.anchoredPlaces||[]);
@@ -1224,7 +1224,60 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
   let visible=fullPool.filter(p=>!saved.has(p.id)&&!anchored.has(p.id)&&!dismissed.has(p.id));
   if(dislikeTags.length) visible=visible.filter(p=>!matchesAny(p,dislikeTags));
   const scoreOf=p=>(matchesAny(p,likeTags)?1000:0)+(ai&&ai[p.id]?ai[p.id].score:0);
-  const ordered=[...visible].sort((a,b)=>scoreOf(b)-scoreOf(a));
+  const ordered=[...visible].sort((a,b)=>scoreOf(b)-scoreOf(a)).map(p=>({...p,__real:false}));
+  // Brand-new real places pulled from learned taste sit at the top of the feed.
+  let found=(trip.discovered||[]).map(p=>({...p,__real:true})).filter(p=>!saved.has(p.id)&&!dismissed.has(p.id));
+  if(dislikeTags.length) found=found.filter(p=>!matchesAny(p,dislikeTags));
+  const feed=[...found,...ordered];
+  const swipes=trip.discoverSwipes||0;
+  const showOptimize=swipes>=10;
+
+  const renderCard=p=>{
+    const real=p.__real;
+    const grad=real?'linear-gradient(135deg,#5BD6B0,#8B72FB)':p.catGrad;
+    const label=real?(p.category||'Place'):p.catLabel;
+    const likeTag=(real?(p._foundFor||p.category||''):(p.catLabel||'')).toLowerCase();
+    return (
+      <SwipeCard key={p.id} labels={{near:'＋ Scratchpad',far:'⚓ Anchor',left:'Skip ✕'}}
+        onSwipeRight={()=>onSave&&onSave(p)} onSwipeRightFar={()=>onAnchor&&onAnchor(p)}
+        onSwipeLeft={()=>onSkip&&onSkip(p)} onTap={()=>real?(p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')):push({type:'place',id:p.id})}>
+      <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+        <div style={{display:'flex',gap:13}}>
+          <Photo name={p.name} area={p.area} grad={grad} emoji={placeEmoji(p)} emojiSize={32} scrim="linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,0.32) 100%)" style={{width:80,height:80,borderRadius:14,flexShrink:0,display:'flex',alignItems:'flex-end',padding:7}}>
+            <span style={{position:'relative',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{label}</span>
+          </Photo>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
+              <BudgetBadge budget={p.budget}/>
+            </div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{real?(p.area||'Tokyo'):`${p.area} · ${p.station}`}</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+              <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
+              <StatusPill openNow={p.openNow} small/>
+            </div>
+          </div>
+        </div>
+        <div style={{marginTop:9}}>
+          {real
+            ? <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'#E6FAF0',border:'1px solid #BCEBD3',borderRadius:999,padding:'4px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:'#0E865B'}}>✨ Found for “{p._foundFor}”</span>
+            : <MatchTag mp={p._matchPref}/>}
+        </div>
+        {!real&&reasonFor(p)&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>}
+        <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+          <SourceLinks name={p.name} area={p.area} googleUrl={real?p.googleUrl:undefined} label={false}/>
+          <div style={{display:'flex',gap:7,flexShrink:0}}>
+            <button onClick={e=>{e.stopPropagation();onLike&&onLike(likeTag);}} aria-label="Like" title="More like this"
+              style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👍</button>
+            <button onClick={e=>{e.stopPropagation();onSkip&&onSkip(p);}} aria-label="Not for me" title="Not for me"
+              style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👎</button>
+          </div>
+        </div>
+      </div>
+      </SwipeCard>
+    );
+  };
+
   return (
     <div style={{position:'absolute',inset:0,overflowY:'auto'}}>
       <div style={{padding:'16px 18px 8px'}}>
@@ -1233,9 +1286,14 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>Discover · Tokyo</div>
             <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:27,color:'#16172A',lineHeight:1.06,marginTop:4,letterSpacing:'-0.02em'}}>{hasPrefs?<>Picked for how<br/>you travel</>:<>Popular in<br/>Tokyo</>}</div>
           </div>
-          <button onClick={()=>push({type:'discoverchat'})} aria-label="Train Anchor" style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,border:'none',background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',borderRadius:999,padding:'9px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,cursor:'pointer',boxShadow:'0 4px 12px rgba(108,92,231,0.35)'}}>
-            <SparkleIco size={14} color="#fff"/> Train
-          </button>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:7,flexShrink:0}}>
+            <button onClick={()=>push({type:'discoverchat'})} aria-label="Train Anchor" style={{display:'inline-flex',alignItems:'center',gap:6,border:'none',background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',borderRadius:999,padding:'9px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,cursor:'pointer',boxShadow:'0 4px 12px rgba(108,92,231,0.35)'}}>
+              <SparkleIco size={14} color="#fff"/> Train
+            </button>
+            <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'#fff',border:'1px solid #E3E5F0',borderRadius:999,padding:'5px 10px',fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:showOptimize?'#ED5A2A':'#6C6E8E'}}>
+              🔥 {swipes}{showOptimize?' · ready':` / 10`}
+            </span>
+          </div>
         </div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:6}}>{hasPrefs?'Only places that match your tastes — swipe right to save, left to skip.':'Set your tastes in onboarding to personalize these.'}</div>
       </div>
@@ -1246,6 +1304,14 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
           {dislikeTags.slice(0,2).map(t=><span key={'d'+t} style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9A3B2A',background:'#FDE2D8',borderRadius:999,padding:'2px 9px'}}>🚫 {t}</span>)}
         </div>
       )}
+      {showOptimize&&(
+        <div style={{padding:'12px 18px 0'}}>
+          <button onClick={()=>onOptimize&&onOptimize()} disabled={optimizing} style={{width:'100%',border:'none',borderRadius:16,background:optimizing?'#C9C2F0':'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:'#fff',fontWeight:700,fontSize:15.5,padding:'14px',cursor:optimizing?'default':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:optimizing?'none':'0 6px 18px rgba(248,87,166,0.32)'}}>
+            <SparkleIco size={18} color="#fff"/> {optimizing?'Finding spots you’ll love…':'Optimize my search'}
+          </button>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',textAlign:'center',marginTop:7}}>Pulls fresh Tokyo places from your 👍 tags{likeTags.length===0?' & prefs':''}</div>
+        </div>
+      )}
       <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px 6px'}}>
         {chips.map(c=>(
           <span key={c} style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,background:'#fff',border:'1px solid #E3E5F0',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,color:'#4E5072',whiteSpace:'nowrap'}}>
@@ -1253,56 +1319,23 @@ function DiscoverScreen({push,trip,onAnchorPlace,onSaveToScratch,onDismiss,onRes
           </span>
         ))}
       </div>
-      {ordered.length===0&&(
+      {found.length>0&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:700,color:'#0E865B',padding:'8px 18px 2px'}}>✨ New finds from your taste</div>}
+      {feed.length===0&&(
         <div style={{margin:'8px 18px',background:'#fff',borderRadius:20,padding:'28px 20px',textAlign:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>
           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>You're all caught up</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:5,lineHeight:1.5}}>You've sorted everything we picked for you. Saved places are in your scratchpad — or train Anchor to widen the net.</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',marginTop:5,lineHeight:1.5}}>You've sorted everything we picked for you. Train Anchor, then tap “Optimize my search” to pull fresh spots.</div>
           {dismissed.size>0&&<button onClick={onResetDismiss} style={{marginTop:14,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:12,padding:'10px 16px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:600,color:'#5A48D6',cursor:'pointer'}}>Bring back skipped places</button>}
         </div>
       )}
       <div style={{display:'flex',flexDirection:'column',gap:12,padding:'10px 18px 24px'}}>
-        {ordered.map(p=>(
-          <SwipeCard key={p.id} labels={{near:'＋ Scratchpad',far:'⚓ Anchor',left:'Skip ✕'}}
-            onSwipeRight={()=>onSaveToScratch&&onSaveToScratch(p)} onSwipeRightFar={()=>onAnchorPlace&&onAnchorPlace(p.id)}
-            onSwipeLeft={()=>onDismiss&&onDismiss(p.id)} onTap={()=>push({type:'place',id:p.id})}>
-          <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
-            <div style={{display:'flex',gap:13}}>
-              <Photo name={p.name} area={p.area} grad={p.catGrad} emoji={placeEmoji(p)} emojiSize={32} scrim="linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,0.32) 100%)" style={{width:80,height:80,borderRadius:14,flexShrink:0,display:'flex',alignItems:'flex-end',padding:7}}>
-                <span style={{position:'relative',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.95)',background:'rgba(0,0,0,0.16)',padding:'3px 7px',borderRadius:999}}>{p.catLabel}</span>
-              </Photo>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
-                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1,flex:1}}>{p.name}</div>
-                  <BudgetBadge budget={p.budget}/>
-                </div>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.station}</div>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
-                  <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
-                  <StatusPill openNow={p.openNow} small/>
-                </div>
-              </div>
-            </div>
-            <div style={{marginTop:9}}><MatchTag mp={p._matchPref}/></div>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>
-            <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-              <SourceLinks name={p.name} area={p.area} label={false}/>
-              <div style={{display:'flex',gap:7,flexShrink:0}}>
-                <button onClick={e=>{e.stopPropagation();onLike&&onLike((p.catLabel||'').toLowerCase());}} aria-label="Like" title="More like this"
-                  style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👍</button>
-                <button onClick={e=>{e.stopPropagation();onDismiss&&onDismiss(p.id);}} aria-label="Not for me" title="Not for me"
-                  style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>👎</button>
-              </div>
-            </div>
-          </div>
-          </SwipeCard>
-        ))}
+        {feed.map(renderCard)}
       </div>
     </div>
   );
 }
 
 /* ── DISCOVER TRAINING CHAT ── */
-function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste}){
+function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste,onOptimize,optimizing}){
   const taste=trip.taste||{likes:[],dislikes:[]};
   const likes=taste.likes||[], dislikes=taste.dislikes||[];
   const [msgs,setMsgs]=useState([{role:'anchor',text:"Hey — I'm Anchor. Tell me what you love or want to avoid in Tokyo and I'll tune your Discover feed. Try “I love tiny natural-wine bars” or “no touristy spots.”"}]);
@@ -1367,6 +1400,14 @@ function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste}){
           {quick.map(q=>(
             <button key={q} onClick={()=>send(q)} style={{flexShrink:0,whiteSpace:'nowrap',border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{q}</button>
           ))}
+        </div>
+      )}
+      {(likes.length>0||dislikes.length>0)&&(
+        <div style={{flexShrink:0,padding:'8px 14px 0'}}>
+          <button onClick={()=>{ if(optimizing) return; onOptimize&&onOptimize(); pop&&pop(); }} disabled={optimizing}
+            style={{width:'100%',border:'none',borderRadius:14,background:optimizing?'#CFEFDD':'linear-gradient(135deg,#14A06E,#0E865B)',color:'#fff',fontWeight:700,fontSize:14.5,padding:'12px',cursor:optimizing?'default':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7}}>
+            <SparkleIco size={16} color="#fff"/> {optimizing?'Finding…':'Find new places from my taste'}
+          </button>
         </div>
       )}
       <div style={{flexShrink:0,display:'flex',gap:9,padding:'10px 14px calc(12px + env(safe-area-inset-bottom))',borderTop:'1px solid #ECEDF6',background:'#FAFAFD'}}>
@@ -2313,14 +2354,22 @@ function App(){
   const anchorScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).map(s=>s.id===id?{...s,status:s.status==='anchored'?'idea':'anchored'}:s)});
   const removeScratch=id=>persist({...trip,scratchpad:(trip.scratchpad||[]).filter(s=>s.id!==id)});
   const scratchCount=(trip?.scratchpad||[]).length;
-  // Discover swipe: right saves a curated pick to the scratchpad, left dismisses it.
-  const saveDiscover=p=>{
-    if((trip.scratchpad||[]).some(s=>s.sourceId===p.id)) return;
-    addScratch({id:'s'+Date.now(),status:'idea',note:'',addedAt:Date.now(),sourceId:p.id,
-      name:p.name,area:p.area,rating:p.rating,tabelogRating:p.tabelogRating,openNow:p.openNow,
-      budget:p.budget,hours:p.hours,category:p.catLabel||p.cat,coords:p.coords});
+  // Build a scratchpad item from any place (curated or live Google result).
+  const scratchItem=(p,status='idea')=>({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),status,note:'',addedAt:Date.now(),sourceId:p.id,
+    name:p.name,area:p.area,rating:p.rating,reviews:p.reviews,tabelogRating:p.tabelogRating,openNow:p.openNow,budget:p.budget,
+    hours:p.hours,address:p.address,category:p.category||p.catLabel,googleUrl:p.googleUrl,coords:p.coords});
+  // Discover swipes are atomic (single persist) and bump the swipe counter.
+  const bumpT=t=>({...t,discoverSwipes:(t.discoverSwipes||0)+1});
+  const discSave=p=>{
+    if((trip.scratchpad||[]).some(s=>s.sourceId===p.id)){persist(bumpT(trip));return;}
+    persist(bumpT({...trip,scratchpad:[...(trip.scratchpad||[]),scratchItem(p,'idea')]}));
   };
-  const dismissDiscover=id=>persist({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),id]});
+  const discAnchor=p=>{
+    if(PLACES[p.id]){const ap=trip.anchoredPlaces||[];persist(bumpT({...trip,anchoredPlaces:ap.includes(p.id)?ap:[...ap,p.id]}));}
+    else if((trip.scratchpad||[]).some(s=>s.sourceId===p.id)){persist(bumpT({...trip,scratchpad:(trip.scratchpad||[]).map(s=>s.sourceId===p.id?{...s,status:'anchored'}:s)}));}
+    else persist(bumpT({...trip,scratchpad:[...(trip.scratchpad||[]),scratchItem(p,'anchored')]}));
+  };
+  const discSkip=p=>persist(bumpT({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),p.id]}));
   const resetDismissed=()=>persist({...trip,dismissedPlaces:[]});
   // Discover "train Anchor": learned taste tags drive ranking/filtering.
   const mergeTags=(arr,add)=>[...new Set([...(arr||[]),...add.map(s=>String(s).toLowerCase().trim()).filter(Boolean)])].slice(0,40);
@@ -2333,6 +2382,32 @@ function App(){
     persist({...trip,taste:{...t,[kind]:(t[kind]||[]).filter(x=>x!==tag)}});
   };
   const likeCategory=tag=>{ if(tag) learnTaste([tag],[]); };
+  // Pull brand-new real Tokyo places (Google) from learned likes / prefs, into the Discover feed.
+  const [optimizing,setOptimizing]=useState(false);
+  const optimizeSearch=async()=>{
+    if(optimizing) return 0;
+    const taste=trip.taste||{likes:[],dislikes:[]};
+    let terms=(taste.likes||[]).slice(0,4);
+    if(!terms.length) terms=(trip.prefs||[]).map(id=>{const o=PREF_OPTS.find(x=>x.id===id);return o?o.label:id;}).slice(0,3);
+    if(!terms.length) terms=['popular restaurants'];
+    setOptimizing(true);
+    const seen=new Set([...(trip.discovered||[]).map(p=>p.id),...(trip.scratchpad||[]).map(s=>s.sourceId).filter(Boolean),...(trip.dismissedPlaces||[])]);
+    const dislikes=taste.dislikes||[];
+    const found=[];
+    for(const term of terms){
+      const res=await API.places(term,'',5);
+      (res.places||[]).forEach(p=>{
+        const id='g:'+(p.googleUrl||p.name||'');
+        const h=((p.name||'')+' '+(p.category||'')).toLowerCase();
+        if(seen.has(id)||found.some(x=>x.id===id)) return;
+        if(dislikes.some(d=>d&&h.includes(d))) return;
+        found.push({...p,id,_foundFor:term});
+      });
+    }
+    setOptimizing(false);
+    persist({...trip,discovered:[...(trip.discovered||[]),...found],discoverSwipes:0});
+    return found.length;
+  };
   // Stash a live (Google) place into the scratchpad — status 'idea' or 'anchored'.
   const stashLive=(p,status='idea')=>addScratch({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),status,note:'',addedAt:Date.now(),
     name:p.name,area:p.area,rating:p.rating,reviews:p.reviews,openNow:p.openNow,budget:p.budget,
@@ -2376,7 +2451,7 @@ function App(){
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
-        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onSaveToScratch={saveDiscover} onDismiss={dismissDiscover} onResetDismiss={resetDismissed} onLike={likeCategory}/>}
+        {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
         {tab==='search'   &&<SearchScreen push={push} onStash={stashLive}/>}
@@ -2385,7 +2460,7 @@ function App(){
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
-        {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste}/>}
+        {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}
 
         {stack.length===0&&(
