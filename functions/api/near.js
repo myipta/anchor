@@ -45,6 +45,7 @@ export async function onRequest(context) {
   const radius = Math.min(Math.max(Number(body.radius) || 1200, 100), 5000);
   const limit = Math.min(Math.max(parseInt(body.limit || 16, 10) || 16, 1), 20);
   const includedTypes = TYPES[body.type] || undefined;
+  const q = (body.q || '').toString().trim(); // optional text query (e.g. "natural wine") biased to the caller's location
 
   const fieldMask = [
     'places.displayName',
@@ -60,18 +61,29 @@ export async function onRequest(context) {
     'places.googleMapsUri',
   ].join(',');
 
-  const reqBody = {
-    maxResultCount: limit,
-    rankPreference: 'DISTANCE',
-    locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius } },
-    languageCode: 'en',
-    regionCode: 'JP',
-  };
-  if (includedTypes) reqBody.includedTypes = includedTypes;
+  // A text query ("natural wine near me") uses searchText biased to the location;
+  // otherwise a plain distance-ranked nearby search.
+  const endpoint = q ? 'places:searchText' : 'places:searchNearby';
+  const reqBody = q
+    ? {
+        textQuery: q,
+        maxResultCount: limit,
+        locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius } },
+        languageCode: 'en',
+        regionCode: 'JP',
+      }
+    : {
+        maxResultCount: limit,
+        rankPreference: 'DISTANCE',
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius } },
+        languageCode: 'en',
+        regionCode: 'JP',
+      };
+  if (!q && includedTypes) reqBody.includedTypes = includedTypes;
 
   let r;
   try {
-    r = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    r = await fetch(`https://places.googleapis.com/v1/${endpoint}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

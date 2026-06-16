@@ -175,10 +175,10 @@ const API={
       return {places:Array.isArray(d.places)?d.places:[]};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
-  async near(lat,lng,{radius=1200,type='all',limit=16}={}){
+  async near(lat,lng,{radius=1200,type='all',limit=16,q=''}={}){
     try{
       const r=await fetch('/api/near',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({lat,lng,radius,type,limit})});
+        body:JSON.stringify({lat,lng,radius,type,limit,q})});
       const d=await r.json();
       if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
       return {places:Array.isArray(d.places)?d.places:[],center:d.center};
@@ -1484,6 +1484,7 @@ function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
   const [geo,setGeo]=useState('idle'); // idle|locating|denied|unsupported|error|ready
   const [data,setData]=useState({loading:false,places:[],error:null});
   const [saved,setSaved]=useState({});
+  const [tasteNear,setTasteNear]=useState({ran:false,loading:false,places:[]});
 
   const locate=React.useCallback(()=>{
     if(typeof navigator==='undefined'||!navigator.geolocation){ setGeo('unsupported'); return; }
@@ -1517,6 +1518,50 @@ function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
   if(likeTags.length) places=[...places].sort((a,b)=>(likedNear(b)?1:0)-(likedNear(a)?1:0)); // float taste matches up
   const pins=nearPinsFrom(coords,places);
   const areaLabel=places[0]?.area||'Near you';
+
+  // Search Google for the traveler's liked tags, biased to their live location.
+  const runTasteNear=async()=>{
+    if(!coords||!likeTags.length||tasteNear.loading) return;
+    setTasteNear({ran:true,loading:true,places:[]});
+    const seen=new Set(); const out=[];
+    for(const tag of likeTags.slice(0,3)){
+      const res=await API.near(coords.lat,coords.lng,{q:tag,radius:2500,limit:6});
+      (res.places||[]).forEach(pp=>{const k=pp.googleUrl||pp.name; if(seen.has(k))return; seen.add(k); out.push({...pp,_tag:tag});});
+    }
+    out.sort((a,b)=>(a.meters??1e9)-(b.meters??1e9));
+    setTasteNear({ran:true,loading:false,places:out});
+  };
+
+  // One Near row, reused by the main list and the taste-search section.
+  const NearRow=({n,tag})=>{
+    const key=n.googleUrl||n.name;
+    return (
+      <div onClick={()=>n.googleUrl&&window.open(n.googleUrl,'_blank','noopener')} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+        <Photo name={n.name} area={n.area} grad="linear-gradient(135deg,#8B72FB,#6C5CE7)" scrim="rgba(0,0,0,0.36)" style={{width:52,height:52,borderRadius:13,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",color:'#fff',lineHeight:1.1}}>
+          <span style={{position:'relative',fontSize:13,fontWeight:700,textShadow:'0 1px 3px rgba(0,0,0,0.5)'}}>{fmtDist(n.meters)}</span>
+        </Photo>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.name}</div>
+          <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
+            <StatusPill openNow={n.openNow} small/>
+            {n.rating!=null&&<Ratings rating={n.rating}/>}
+            {n.budget&&<BudgetBadge budget={n.budget}/>}
+            {tag
+              ? <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 8px'}}><SparkleIco size={11} color="#0E865B"/> {tag}</span>
+              : likedNear(n)&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 8px'}}><SparkleIco size={11} color="#0E865B"/> your taste · {likeTags.find(t=>t&&tHay(n).includes(t))}</span>}
+          </div>
+          {n.category&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:4}}>{n.category}{n.reviews?` · ${n.reviews.toLocaleString()} reviews`:''}</div>}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flexShrink:0}}>
+          <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E'}}>
+            <WalkIco size={12}/> {walkMin(n.meters)}
+          </span>
+          <button onClick={e=>{e.stopPropagation(); if(saved[key])return; onSaveNear&&onSaveNear(n); setSaved(s=>({...s,[key]:true}));}}
+            aria-label="Save" style={{width:30,height:30,borderRadius:9,border:'1.5px solid '+(saved[key]?'#14A06E':'#E3E5F0'),background:saved[key]?'#14A06E':'#fff',color:saved[key]?'#fff':'#6C5CE7',fontSize:16,fontWeight:700,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{saved[key]?'✓':'＋'}</button>
+        </div>
+      </div>
+    );
+  };
 
   const fBase={border:'1px solid #E3E5F0',background:'#fff',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'8px 14px',borderRadius:999,cursor:'pointer',flexShrink:0};
   const fOn={...fBase,background:'#6C5CE7',color:'#fff',border:'1px solid #6C5CE7'};
@@ -1556,6 +1601,21 @@ function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
             ))}
           </div>
         )}
+        {geo==='ready'&&likeTags.length>0&&(
+          <div style={{padding:'0 18px 6px'}}>
+            <button onClick={runTasteNear} disabled={tasteNear.loading} style={{width:'100%',border:'none',borderRadius:14,background:tasteNear.loading?'#CFEFDD':'linear-gradient(135deg,#14A06E,#0E865B)',color:'#fff',fontWeight:700,fontSize:14.5,padding:'12px',cursor:tasteNear.loading?'default':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7}}>
+              <SparkleIco size={16} color="#fff"/> {tasteNear.loading?'Searching near you…':'Find my taste nearby'}
+            </button>
+          </div>
+        )}
+        {geo==='ready'&&tasteNear.ran&&!tasteNear.loading&&(
+          <div style={{padding:'0 18px 8px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:700,color:'#0E865B',padding:'6px 2px 8px'}}><SparkleIco size={14} color="#0E865B"/> Your taste, nearby</div>
+            {tasteNear.places.length===0
+              ? <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD',padding:'2px 2px 6px'}}>Nothing matching your taste within reach right now.</div>
+              : <div style={{display:'flex',flexDirection:'column',gap:10}}>{tasteNear.places.map(n=><NearRow key={'tn'+(n.googleUrl||n.name)} n={n} tag={n._tag}/>)}</div>}
+          </div>
+        )}
 
         {geo==='locating'&&<Msg title="Finding where you are…" body="Checking your location to show what's actually around you."/>}
         {geo==='denied'&&<Msg title="Location is off" body="Turn on location access for this site to see places near you right now." action={locate} actionLabel="Try again"/>}
@@ -1572,30 +1632,8 @@ function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
 
         {geo==='ready'&&!data.loading&&!data.error&&places.length>0&&(
           <div style={{display:'flex',flexDirection:'column',gap:10,padding:'0 18px 24px'}}>
-            {places.map((n,i)=>(
-              <div key={(n.googleUrl||n.name)+i} onClick={()=>n.googleUrl&&window.open(n.googleUrl,'_blank','noopener')} style={{display:'flex',alignItems:'center',gap:13,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 5px 14px rgba(22,23,42,0.05)',cursor:'pointer'}}>
-                <Photo name={n.name} area={n.area} grad="linear-gradient(135deg,#8B72FB,#6C5CE7)" scrim="rgba(0,0,0,0.36)" style={{width:52,height:52,borderRadius:13,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",color:'#fff',lineHeight:1.1}}>
-                  <span style={{position:'relative',fontSize:13,fontWeight:700,textShadow:'0 1px 3px rgba(0,0,0,0.5)'}}>{fmtDist(n.meters)}</span>
-                </Photo>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.name}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:7,marginTop:5,flexWrap:'wrap'}}>
-                    <StatusPill openNow={n.openNow} small/>
-                    {n.rating!=null&&<Ratings rating={n.rating}/>}
-                    {n.budget&&<BudgetBadge budget={n.budget}/>}
-                    {likedNear(n)&&<span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#0E865B',background:'#D6F5E6',borderRadius:999,padding:'2px 8px'}}><SparkleIco size={11} color="#0E865B"/> your taste · {likeTags.find(t=>t&&tHay(n).includes(t))}</span>}
-                  </div>
-                  {n.category&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:4}}>{n.category}{n.reviews?` · ${n.reviews.toLocaleString()} reviews`:''}</div>}
-                </div>
-                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,flexShrink:0}}>
-                  <span style={{display:'inline-flex',alignItems:'center',gap:4,fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C6E8E'}}>
-                    <WalkIco size={12}/> {walkMin(n.meters)}
-                  </span>
-                  <button onClick={e=>{e.stopPropagation(); if(saved[i])return; onSaveNear&&onSaveNear(n); setSaved(s=>({...s,[i]:true}));}}
-                    aria-label="Save" style={{width:30,height:30,borderRadius:9,border:'1.5px solid '+(saved[i]?'#14A06E':'#E3E5F0'),background:saved[i]?'#14A06E':'#fff',color:saved[i]?'#fff':'#6C5CE7',fontSize:16,fontWeight:700,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{saved[i]?'✓':'＋'}</button>
-                </div>
-              </div>
-            ))}
+            {tasteNear.ran&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:700,color:'#6C6E8E',padding:'2px 2px 0'}}>Everything around you</div>}
+            {places.map(n=><NearRow key={n.googleUrl||n.name} n={n}/>)}
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center',marginTop:2}}>Live from Google · tap a place for directions</div>
           </div>
         )}
