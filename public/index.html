@@ -1309,7 +1309,7 @@ function SourceLinks({name,area,googleUrl,label=true}){
 
 /* Swipe-to-save / swipe-to-skip wrapper. Right = save, left = skip; small drag = tap. */
 function SwipeCard({onSwipeRight,onSwipeRightFar,onSwipeLeft,onTap,labels={},children}){
-  const L={near:'＋ Save',far:'Anchor',left:'Skip ✕',...labels};
+  const L={near:'Save',far:'Anchor',left:'Skip ✕',...labels};
   const NEAR=80, FAR=185;
   const [dx,setDx]=useState(0);
   const [anim,setAnim]=useState(false);
@@ -1363,12 +1363,34 @@ function MatchTag({mp}){
   );
 }
 
+// Short, human label for an anchor chip/pill ("Park Hyatt Tokyo" -> "Park Hyatt").
+function anchorShort(a){ return ((a&&a.name)||'anchor').replace(/\s+(hotel|hostel|inn|tokyo)$/i,'').split(' ').slice(0,2).join(' '); }
+// Straight-line distance + walk estimate from a place to the chosen anchor.
+// Falls back to a neighborhood match when either side has no coordinates.
+function AnchorDistPill({place,anchor}){
+  if(!anchor) return null;
+  const base={display:'inline-flex',alignItems:'center',gap:5,background:'#EEF0FF',border:'1px solid #D9DEFF',borderRadius:999,padding:'4px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:'#4836B4'};
+  const short=anchorShort(anchor);
+  const pc=parseCoords(place&&place.coords), ac=parseCoords(anchor.coords);
+  if(pc&&ac){
+    const m=haversineM(pc,ac);
+    return <span style={base}><WalkIco size={12} color="#4836B4"/> {fmtDist(m)} · {walkMin(m)} to {short}</span>;
+  }
+  const pa=((place&&place.area)||'').toLowerCase(), aa=(anchor.area||'').toLowerCase();
+  if(pa&&aa&&pa===aa) return <span style={base}><AnchorIco size={11} color="#4836B4"/> Same area as {short}</span>;
+  return null;
+}
+
 function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,onOptimize,optimizing}) {
   const chips=['Counter dining','Offcuts & izakaya','Quiet mornings','Specialty coffee','Vintage','Slow afternoons'];
   const prefs=trip.prefs||[];
   const hasPrefs=prefs.length>0;
   const taste=trip.taste||{likes:[],dislikes:[]};
   const likeTags=taste.likes||[], dislikeTags=taste.dislikes||[];
+  // Anchor (hotel) the feed measures distance from. Pick among several; default first.
+  const allAnchors=trip.anchors||[];
+  const [distAnchorId,setDistAnchorId]=useState(null);
+  const distAnchor=allAnchors.find(a=>a.id===distAnchorId)||allAnchors[0]||null;
   const prefsKey=JSON.stringify(prefs);
   const fullPool=useMemo(()=>getSuggestions(prefs,8,[],true),[prefsKey]); // strict: only pref-matched, no random backfill
   const [ai,setAi]=useState(null);
@@ -1405,7 +1427,7 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
     const likeTag=(real?(p._foundFor||p.category||''):(p.catLabel||'')).toLowerCase();
     const why=likeTags.find(t=>t&&hay(p).includes(t));
     return (
-      <SwipeCard key={p.id} labels={{near:'＋ Scratchpad',far:'Anchor',left:'Skip ✕'}}
+      <SwipeCard key={p.id} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
         onSwipeRight={()=>onSave&&onSave(p)} onSwipeRightFar={()=>onAnchor&&onAnchor(p)}
         onSwipeLeft={()=>onSkip&&onSkip(p)} onTap={()=>real?(p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')):push({type:'place',id:p.id})}>
       <div style={{background:'#fff',borderRadius:20,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
@@ -1426,6 +1448,7 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
           </div>
         </div>
         <div style={{marginTop:9,display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+          {distAnchor&&<AnchorDistPill place={p} anchor={distAnchor}/>}
           {real
             ? <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'#E6FAF0',border:'1px solid #BCEBD3',borderRadius:999,padding:'4px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:'#0E865B'}}><SparkleIco size={12} color="#0E865B"/> Found for “{p._foundFor}”</span>
             : <MatchTag mp={p._matchPref}/>}
@@ -1465,6 +1488,20 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
         </div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:6}}>{hasPrefs?'Only places that match your tastes — swipe right to save, left to skip.':'Set your tastes in onboarding to personalize these.'}</div>
       </div>
+      {allAnchors.length>0&&(
+        <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap',padding:'2px 18px 0'}}>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:700,color:'#9092AD',textTransform:'uppercase',letterSpacing:'0.04em'}}>Distance from</span>
+          {allAnchors.map(a=>{
+            const on=distAnchor&&distAnchor.id===a.id;
+            return (
+              <button key={a.id} onClick={()=>setDistAnchorId(a.id)}
+                style={{display:'inline-flex',alignItems:'center',gap:5,border:'1.5px solid '+(on?'transparent':'#E3E5F0'),background:on?'linear-gradient(135deg,#8B72FB,#6C5CE7)':'#fff',color:on?'#fff':'#4E5072',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,cursor:'pointer'}}>
+                <AnchorIco size={11} color={on?'#fff':'#6C5CE7'}/> {anchorShort(a)}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {(likeTags.length>0||dislikeTags.length>0)&&(
         <div onClick={()=>push({type:'discoverchat'})} style={{margin:'4px 18px 0',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'#F4F2FF',border:'1px solid #E3DCFF',borderRadius:14,padding:'9px 12px',cursor:'pointer'}}>
           <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:700,color:'#5A48D6',textTransform:'uppercase',letterSpacing:'0.04em'}}>Tuned by you</span>
@@ -1603,8 +1640,23 @@ function DiscoverChatOverlay({pop,trip,onLearn,onRemoveTaste,onOptimize,optimizi
 }
 
 /* ── NEAR ── */
-function fmtDist(m){ if(m==null) return '—'; return m<1000?`${m} m`:`${(m/1000).toFixed(1)} km`; }
+function fmtDist(m){ if(m==null) return '—'; m=Math.round(m); return m<1000?`${m} m`:`${(m/1000).toFixed(1)} km`; }
 function walkMin(m){ if(m==null) return ''; return `${Math.max(1,Math.round(m/80))} min`; } // ~80 m/min
+// The app stores coords as a "lat, lng" string (curated data + Google results).
+function parseCoords(c){
+  if(!c) return null;
+  if(typeof c==='object'&&c.lat!=null&&c.lng!=null) return {lat:+c.lat,lng:+c.lng};
+  const m=String(c).match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  return m?{lat:+m[1],lng:+m[2]}:null;
+}
+// Straight-line distance in metres (haversine). Free, instant, no API call.
+function haversineM(a,b){
+  if(!a||!b) return null;
+  const R=6371000, toR=x=>x*Math.PI/180;
+  const dLat=toR(b.lat-a.lat), dLng=toR(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
+}
 function nowTime(){ return new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 
 // Plot real nearby places around "you" (centre). North is up; east is right.
@@ -1703,7 +1755,7 @@ function NearScreen({push,filter,setFilter,onSaveNear,trip}) {
             <WalkIco size={12}/> {walkMin(n.meters)}
           </span>
           <button onClick={e=>{e.stopPropagation(); if(saved[key])return; onSaveNear&&onSaveNear(n); setSaved(s=>({...s,[key]:true}));}}
-            aria-label="Save" style={{width:30,height:30,borderRadius:9,border:'1.5px solid '+(saved[key]?'#14A06E':'#E3E5F0'),background:saved[key]?'#14A06E':'#fff',color:saved[key]?'#fff':'#6C5CE7',fontSize:16,fontWeight:700,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{saved[key]?'✓':'＋'}</button>
+            aria-label="Save" style={{width:30,height:30,borderRadius:9,border:'1.5px solid '+(saved[key]?'#14A06E':'#E3E5F0'),background:saved[key]?'#14A06E':'#fff',color:saved[key]?'#fff':'#6C5CE7',fontSize:16,fontWeight:700,lineHeight:1,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{saved[key]?'✓':<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}</button>
         </div>
       </div>
     );
@@ -2011,7 +2063,7 @@ function SearchScreen({push,onStash,trip,onReject}) {
                   {liveVisible.map(({p,key})=>(
                     <div key={key}>
                       <SwipeCard
-                        labels={{near:'＋ Scratchpad',far:'Anchor',left:'Skip ✕'}}
+                        labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
                         onSwipeRight={()=>{onStash&&onStash(p,'idea'); setHidden(h=>({...h,[key]:1}));}}
                         onSwipeRightFar={()=>{onStash&&onStash(p,'anchored'); setHidden(h=>({...h,[key]:1}));}}
                         onSwipeLeft={()=>setHidden(h=>({...h,[key]:1}))}
