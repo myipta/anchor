@@ -237,6 +237,15 @@ const API={
       return {action:d.action,reply:d.reply||'',places:Array.isArray(d.places)?d.places:[],source:d.source};
     }catch{return {error:'network',reply:'Could not reach the server — try again in a moment.',places:[]};}
   },
+  async concierge(messages,context){
+    try{
+      const r=await fetch('/api/concierge',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({messages,context})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',reply:d.reply||d.message||'I had trouble responding — try again.',places:[],learned:{likes:[],dislikes:[]},chips:[]};
+      return {reply:d.reply||'',places:Array.isArray(d.places)?d.places:[],learned:d.learned||{likes:[],dislikes:[]},chips:Array.isArray(d.chips)?d.chips:[]};
+    }catch{return {error:'network',reply:'Could not reach me just now — try again in a moment.',places:[],learned:{likes:[],dislikes:[]},chips:[]};}
+  },
   async near(lat,lng,{radius=1200,type='all',limit=16,q=''}={}){
     try{
       const r=await fetch('/api/near',{method:'POST',headers:{'content-type':'application/json'},
@@ -2008,83 +2017,99 @@ function GoogleResultCard({p}){
   );
 }
 
-/* ── SEARCH ── */
-function SearchScreen({push,onStash,trip,onReject}) {
-  // The Search tab is a conversation: you ask for places, DeepSeek interprets
-  // and runs the live search, and ranked results appear inline as cards.
-  const [msgs,setMsgs]=useState([{role:'anchor',text:"Hi — I'm Anchor. Tell me what you're after in Tokyo and I'll find it. Try “quiet coffee near Shibuya” or “a standing sushi counter.”"}]);
+/* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
+function SearchScreen({push,onStash,trip,onLearn}) {
+  // The Search tab is a conversation with a knowledgeable Tokyo local (Claude).
+  // It recommends real places woven into chat and learns your taste as you talk.
+  const hotelArea=(trip.anchors&&trip.anchors[0]&&trip.anchors[0].area)||trip.hotelArea||'';
+  const greet=hotelArea
+    ? `Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. Tell me what you're in the mood for and I'll point you to the good stuff — coffee, a first dinner, something to do tomorrow?`
+    : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love. What are you in the mood for?";
+  const [msgs,setMsgs]=useState([{role:'anchor',text:greet}]);
   const [input,setInput]=useState('');
   const [busy,setBusy]=useState(false);
+  const [saved,setSaved]=useState({});
   const scrollRef=React.useRef(null);
-  const allAnchors=trip.anchors||[];
-  const distAnchor=allAnchors[0]||null; // measure result distance from the primary anchor
   useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[msgs,busy]);
+
+  const context=()=>({
+    taste:trip.taste||{likes:[],dislikes:[]},
+    prefs:trip.prefs||[],
+    hotelArea, nights:trip.nights,
+    saved:[...(trip.scratchpad||[]).map(s=>s.name).filter(Boolean),
+      ...((trip.anchoredPlaces||[]).map(id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)).filter(Boolean))].slice(0,20),
+  });
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
-    const history=[...msgs,{role:'user',text}].slice(-12).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+    const hist=[...msgs,{role:'user',text}].slice(-16).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
     setMsgs(m=>[...m,{role:'user',text}]); setInput(''); setBusy(true);
-    const res=await API.searchChat(history,(trip&&trip.taste)||{likes:[],dislikes:[]},(trip&&trip.prefs)||[],'');
+    const res=await API.concierge(hist,context());
     setBusy(false);
-    setMsgs(m=>[...m,{role:'anchor',text:res.reply||(res.places&&res.places.length?'Here’s what I found:':'Hmm, I couldn’t find that — try rephrasing.'),places:res.places||[]}]);
+    if(onLearn&&res.learned&&((res.learned.likes&&res.learned.likes.length)||(res.learned.dislikes&&res.learned.dislikes.length)))
+      onLearn(res.learned.likes||[],res.learned.dislikes||[]);
+    setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Tell me a bit more?',places:res.places||[],chips:res.chips||[],learned:res.learned||null}]);
   };
-  const quick=['Quiet specialty coffee','Standing sushi counter','Natural wine bar','Vintage shops in Shimokitazawa'];
+  const savePlace=(p,key)=>{ onStash&&onStash(p,'idea'); setSaved(s=>({...s,[key]:true})); };
+  const mapsUrl=p=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(`${p.name} ${p.area||''} Tokyo`);
+  const lastIdx=msgs.length-1;
+
   return (
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:'#FAFAFD'}}>
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',gap:12}}>
-        <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#5BD6B0,#6C5CE7)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><SparkleIco size={20} color="#fff"/></div>
+        <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#FB7242,#F857A6)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{fontSize:20}}>⚓</span></div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Search Tokyo</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>Chat to find places — ranked to your taste</div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Your Tokyo local</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>Chat for recommendations — the more you talk, the better</div>
         </div>
       </div>
+
       <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'16px 14px 8px',display:'flex',flexDirection:'column',gap:13}}>
         {msgs.map((m,i)=>(
           <div key={i} style={{display:'flex',flexDirection:'column',gap:9,width:'100%'}}>
-            <div style={{alignSelf:m.role==='user'?'flex-end':'flex-start',maxWidth:'88%',background:m.role==='user'?'linear-gradient(135deg,#8B72FB,#6C5CE7)':'#fff',color:m.role==='user'?'#fff':'#16172A',borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'11px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,lineHeight:1.45,boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>{m.text}</div>
+            <div style={{alignSelf:m.role==='user'?'flex-end':'flex-start',maxWidth:'88%',background:m.role==='user'?'linear-gradient(135deg,#8B72FB,#6C5CE7)':'#fff',color:m.role==='user'?'#fff':'#16172A',borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'11px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,lineHeight:1.5,boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>{m.text}</div>
+
+            {m.learned&&((m.learned.likes&&m.learned.likes.length)||(m.learned.dislikes&&m.learned.dislikes.length))?(
+              <div style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:6,background:'#F0FBF6',border:'1px solid #C9EEDD',borderRadius:999,padding:'5px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#0E865B'}}>
+                <SparkleIco size={12} color="#0E865B"/>Noted{m.learned.likes&&m.learned.likes.length?`: likes ${m.learned.likes.join(', ')}`:''}{m.learned.dislikes&&m.learned.dislikes.length?` · avoids ${m.learned.dislikes.join(', ')}`:''}
+              </div>
+            ):null}
+
             {m.places&&m.places.length>0&&(
-              <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                {m.places.map((p,j)=>(
-                  <SwipeCard key={(p.googleUrl||p.name||'r')+j} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
-                    onSwipeRight={()=>onStash&&onStash(p,'idea')} onSwipeRightFar={()=>onStash&&onStash(p,'anchored')}
-                    onSwipeLeft={()=>{}} onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
-                    <div style={{background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
-                      <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                        <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={22} style={{width:46,height:46,borderRadius:12,flexShrink:0}}/>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
-                            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
-                            <BudgetBadge budget={p.budget}/>
-                          </div>
-                          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
-                            {p.openNow&&<StatusPill openNow={p.openNow} small/>}
-                            {p.rating!=null&&<span style={{display:'inline-flex',alignItems:'center',gap:3}}><StarIco size={13}/><span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756'}}>{p.rating}</span>{p.reviews!=null&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>({p.reviews})</span>}</span>}
-                            {p.category&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{p.category}</span>}
-                          </div>
-                          {distAnchor&&<div style={{marginTop:6}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
-                        </div>
+              <div style={{display:'flex',flexDirection:'column',gap:9}}>
+                {m.places.map((p,j)=>{const key=i+'-'+j;return(
+                  <div key={key} style={{background:'#fff',borderRadius:16,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)'}}>
+                    <div style={{display:'flex',gap:11,alignItems:'flex-start'}}>
+                      <div style={{width:38,height:38,borderRadius:11,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📍</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.2}}>{p.name}</div>
+                        {p.area&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:1}}>{p.area}</div>}
+                        {p.why&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.4,marginTop:6}}>{p.why}</div>}
                       </div>
-                      {p.reason&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.reason}</div></div>}
-                      <div style={{marginTop:9}}><SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/></div>
                     </div>
-                  </SwipeCard>
+                    <div style={{display:'flex',gap:8,marginTop:11}}>
+                      <button onClick={()=>savePlace(p,key)} disabled={saved[key]} style={{flex:1,border:'none',borderRadius:11,padding:'9px 0',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,cursor:saved[key]?'default':'pointer',background:saved[key]?'#EAF7F1':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:saved[key]?'#0E865B':'#fff'}}>{saved[key]?'✓ Saved':'+ Save'}</button>
+                      <a href={mapsUrl(p)} target="_blank" rel="noopener" style={{flex:1,textAlign:'center',textDecoration:'none',border:'1.5px solid #E3E5F0',borderRadius:11,padding:'9px 0',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,color:'#6C6E8E'}}>Map ↗</a>
+                    </div>
+                  </div>
+                );})}
+              </div>
+            )}
+
+            {i===lastIdx&&m.role==='anchor'&&m.chips&&m.chips.length>0&&!busy&&(
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:1}}>
+                {m.chips.map(c=>(
+                  <button key={c} onClick={()=>send(c)} style={{border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'7px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{c}</button>
                 ))}
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center',marginTop:1}}>Swipe a card right → scratchpad · far right → anchor</div>
               </div>
             )}
           </div>
         ))}
-        {busy&&<div style={{alignSelf:'flex-start',background:'#fff',borderRadius:'16px 16px 16px 4px',padding:'11px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>Searching Tokyo…</div>}
+        {busy&&<div style={{alignSelf:'flex-start',background:'#fff',borderRadius:'16px 16px 16px 4px',padding:'11px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>Thinking…</div>}
       </div>
-      {msgs.length<=1&&(
-        <div style={{flexShrink:0,display:'flex',gap:8,overflowX:'auto',padding:'4px 16px 10px'}}>
-          {quick.map(qq=>(
-            <button key={qq} onClick={()=>send(qq)} style={{flexShrink:0,whiteSpace:'nowrap',border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{qq}</button>
-          ))}
-        </div>
-      )}
+
       <div style={{flexShrink:0,display:'flex',gap:9,padding:'10px 14px calc(12px + env(safe-area-inset-bottom))',borderTop:'1px solid #ECEDF6',background:'#FAFAFD'}}>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')send();}}
-          placeholder="Ask for any kind of place in Tokyo…" style={{flex:1,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+          placeholder="Ask your Tokyo local anything…" style={{flex:1,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
         <button onClick={()=>send()} disabled={!input.trim()||busy} style={{flexShrink:0,border:'none',borderRadius:14,background:!input.trim()||busy?'#C9C2F0':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontWeight:600,fontSize:15,padding:'0 18px',cursor:!input.trim()||busy?'default':'pointer'}}>Send</button>
       </div>
     </div>
@@ -2772,7 +2797,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onReject={rejectSearch}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
