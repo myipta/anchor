@@ -1,70 +1,129 @@
-// Tabelog (Japan's authoritative restaurant site) search via the Apify
-// parseforge/tabelog-scraper actor. Returns ranked restaurants with their real
-// Tabelog score and the DIRECT restaurant URL (so the installed Tabelog app
-// opens via universal links — no copy-paste). Fails soft: returns { error } and
-// the caller falls back to Google.
+// Tabelog restaurant search for the concierge — FREE direct scrape first (no
+// token), optional Apify actor if APIFY_TOKEN is set, and the caller (/api/tabelog)
+// falls back to Google. Returns real Tabelog scores + the DIRECT restaurant URL
+// (so the installed Tabelog app opens via universal links — no copy-paste).
 //
-// NOTE: actor input/output schemas vary between Tabelog scrapers. The actor id
-// and search field are overridable via env, and output parsing is defensive so
-// we can adapt to the live shape without code changes where possible.
-//   env.APIFY_TOKEN           — required
-//   env.APIFY_TABELOG_ACTOR   — default 'parseforge~tabelog-scraper'
+// The direct scrape reads Tabelog's JSON-LD (stable, structured) with an HTML
+// regex fallback. Fails soft everywhere.
 
 const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const decode = s => String(s || '')
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/\s+/g, ' ').trim();
 
-function pick(o, keys) {
-  for (const k of keys) { if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; }
-  return null;
+function pick(o, keys) { for (const k of keys) { if (o && o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; } return null; }
+
+// ── parse Tabelog list/search HTML ──
+function parseTabelog(html, area, limit) {
+  const out = [];
+  const seen = new Set();
+  const push = p => { if (p && p.name && p.tabelogUrl && !seen.has(p.tabelogUrl)) { seen.add(p.tabelogUrl); out.push(p); } };
+
+  // 1) JSON-LD blocks (most reliable).
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const b of blocks) {
+    const jsonText = b.replace(/^[\s\S]*?>/, '').replace(/<\/script>$/i, '').trim();
+    let data; try { data = JSON.parse(jsonText); } catch { continue; }
+    const stack = Array.isArray(data) ? [...data] : [data];
+    while (stack.length) {
+      const e = stack.shift();
+      if (!e || typeof e !== 'object') continue;
+      if (e['@graph']) stack.push(...[].concat(e['@graph']));
+      if (e.itemListElement) stack.push(...[].concat(e.itemListElement).map(x => x && x.item ? x.item : x));
+      const type = [].concat(e['@type'] || []).join(' ');
+      if (/Restaurant|FoodEstablishment|LocalBusiness/i.test(type)) {
+        const addr = typeof e.address === 'string' ? e.address : (e.address && (e.address.streetAddress || e.address.addressLocality)) || null;
+        push({
+          name: decode(e.name),
+          area: area || (e.address && e.address.addressLocality) || 'Tokyo',
+          tabelogRating: (() => { const r = num(e.aggregateRating && e.aggregateRating.ratingValue); return r && r <= 5 ? r : null; })(),
+          reviews: num(e.aggregateRating && (e.aggregateRating.reviewCount || e.aggregateRating.ratingCount)),
+          budget: e.priceRange || null,
+          category: Array.isArray(e.servesCuisine) ? e.servesCuisine[0] : (e.servesCuisine || null),
+          coords: (e.geo && num(e.geo.latitude) != null && num(e.geo.longitude) != null) ? `${num(e.geo.latitude)}, ${num(e.geo.longitude)}` : null,
+          tabelogUrl: typeof e.url === 'string' ? e.url : null,
+          address: addr ? decode(addr) : null,
+        });
+      }
+    }
+  }
+
+  // 2) HTML fallback: restaurant name links + nearby rating.
+  if (out.length < 3) {
+    const re = /<a\b[^>]*href="(https:\/\/tabelog\.com\/en\/[^"]+\/\d{6,}\/)"[^>]*class="[^"]*rst-name-target[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = re.exec(html)) && out.length < limit + 5) {
+      const name = decode(m[2].replace(/<[^>]+>/g, ''));
+      if (name) push({ name, area: area || 'Tokyo', tabelogRating: null, reviews: null, budget: null, category: null, coords: null, tabelogUrl: m[1], address: null });
+    }
+    // attach ratings by document order if present
+    const ratings = [...html.matchAll(/c-rating__val[^>]*>\s*([\d.]+)\s*</gi)].map(x => num(x[1])).filter(r => r && r <= 5);
+    out.forEach((p, i) => { if (p.tabelogRating == null && ratings[i] != null) p.tabelogRating = ratings[i]; });
+  }
+
+  return out.slice(0, limit);
 }
 
-function coordsOf(it) {
-  const lat = pick(it, ['latitude', 'lat']) ?? it.location?.lat ?? it.location?.latitude ?? it.geolocation?.lat;
-  const lng = pick(it, ['longitude', 'lng', 'lon']) ?? it.location?.lng ?? it.location?.longitude ?? it.geolocation?.lng;
-  const a = num(lat), b = num(lng);
-  return (a != null && b != null) ? `${a}, ${b}` : null;
+async function tabelogScrape({ query, area, limit }) {
+  const term = area ? `${query} ${area}` : query;
+  const url = `https://tabelog.com/en/rstLst/?sw=${encodeURIComponent(term)}`;
+  let r;
+  try {
+    r = await fetch(url, { headers: {
+      'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      'accept-language': 'en-US,en;q=0.9', 'accept': 'text/html',
+    } });
+  } catch (e) { return { error: 'tabelog_fetch', detail: String(e).slice(0, 150), places: [] }; }
+  if (!r.ok) return { error: 'tabelog_http_' + r.status, places: [] };
+  let html; try { html = await r.text(); } catch { return { error: 'tabelog_body', places: [] }; }
+  const places = parseTabelog(html, area, limit);
+  return places.length ? { places, source: 'tabelog' } : { error: 'tabelog_parse', places: [] };
 }
 
-function mapItem(it, area) {
-  const name = pick(it, ['name', 'title', 'restaurantName', 'shopName', 'storeName']);
-  if (!name) return null;
-  const rating = num(pick(it, ['rating', 'score', 'tabelogRating', 'totalScore', 'reviewScore']));
-  const cats = pick(it, ['genre', 'genres', 'category', 'categories', 'cuisine']);
-  const category = Array.isArray(cats) ? cats[0] : cats;
-  return {
-    name: String(name).slice(0, 90),
-    area: area || pick(it, ['area', 'neighborhood', 'city', 'station']) || 'Tokyo',
-    tabelogRating: rating && rating <= 5 ? rating : null,   // Tabelog scores are 0–5 (great is 3.5+)
-    reviews: num(pick(it, ['reviewCount', 'reviewsCount', 'reviews', 'numReviews', 'reviewNum'])),
-    budget: pick(it, ['budget', 'dinnerBudget', 'priceRange', 'price', 'lunchBudget']) || null,
-    category: category ? String(category).slice(0, 40) : null,
-    coords: coordsOf(it),
-    tabelogUrl: pick(it, ['url', 'tabelogUrl', 'link', 'detailUrl', 'pageUrl', 'href']) || null,
-    address: pick(it, ['address', 'fullAddress', 'addressLine']) || null,
-  };
-}
-
-export async function tabelogSearch(env, { query, area = '', limit = 12 }) {
-  if (!env.APIFY_TOKEN) return { error: 'no_token', places: [] };
-  const q = (query || '').toString().trim();
-  if (!q) return { error: 'no_query', places: [] };
+// ── optional Apify actor (only if APIFY_TOKEN set) ──
+async function tabelogApify(env, { query, area, limit }) {
   const actor = (env.APIFY_TABELOG_ACTOR || 'parseforge~tabelog-scraper').replace('/', '~');
-  const searchTerm = area ? `${q} ${area}` : q;
-  // Send a superset of common input keys; the actor uses what it recognises.
+  const term = area ? `${query} ${area}` : query;
   const input = {
-    search: searchTerm, query: searchTerm, queries: [searchTerm], keyword: searchTerm,
-    searchStringsArray: [searchTerm], searchTerms: [searchTerm],
-    city: 'tokyo', location: 'Tokyo', language: 'en',
-    maxItems: limit, maxResults: limit, maxCrawledPlacesPerSearch: limit, limit,
-    startUrls: [{ url: `https://tabelog.com/en/rstLst/?sw=${encodeURIComponent(searchTerm)}` }],
+    search: term, query: term, queries: [term], keyword: term, searchStringsArray: [term],
+    city: 'tokyo', language: 'en', maxItems: limit, maxResults: limit, limit,
+    startUrls: [{ url: `https://tabelog.com/en/rstLst/?sw=${encodeURIComponent(term)}` }],
   };
   let r;
   try {
-    r = await fetch(
-      `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(env.APIFY_TOKEN)}&timeout=55`,
+    r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(env.APIFY_TOKEN)}&timeout=55`,
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
-  } catch (e) { return { error: 'apify_fetch', detail: String(e).slice(0, 200), places: [] }; }
-  if (!r.ok) { const d = await r.text(); return { error: 'apify_error', status: r.status, detail: d.slice(0, 200), places: [] }; }
+  } catch (e) { return { error: 'apify_fetch', detail: String(e).slice(0, 150), places: [] }; }
+  if (!r.ok) { const d = await r.text(); return { error: 'apify_error', status: r.status, detail: d.slice(0, 150), places: [] }; }
   let items; try { items = await r.json(); } catch { return { error: 'apify_parse', places: [] }; }
-  const places = (Array.isArray(items) ? items : []).map(it => mapItem(it, area)).filter(Boolean).slice(0, limit);
-  return { places, source: 'tabelog' };
+  const places = (Array.isArray(items) ? items : []).map(it => {
+    const name = pick(it, ['name', 'title', 'restaurantName']); if (!name) return null;
+    const rating = num(pick(it, ['rating', 'score', 'tabelogRating', 'totalScore']));
+    const cats = pick(it, ['genre', 'genres', 'category', 'categories', 'cuisine']);
+    return {
+      name: decode(name), area: area || pick(it, ['area', 'neighborhood', 'city']) || 'Tokyo',
+      tabelogRating: rating && rating <= 5 ? rating : null,
+      reviews: num(pick(it, ['reviewCount', 'reviewsCount', 'reviews'])),
+      budget: pick(it, ['budget', 'dinnerBudget', 'priceRange', 'price']) || null,
+      category: Array.isArray(cats) ? cats[0] : cats || null,
+      coords: (() => { const la = num(pick(it, ['latitude', 'lat'])), lo = num(pick(it, ['longitude', 'lng'])); return la != null && lo != null ? `${la}, ${lo}` : null; })(),
+      tabelogUrl: pick(it, ['url', 'tabelogUrl', 'link', 'detailUrl']) || null,
+      address: pick(it, ['address', 'fullAddress']) || null,
+    };
+  }).filter(Boolean).slice(0, limit);
+  return places.length ? { places, source: 'tabelog-apify' } : { error: 'apify_empty', places: [] };
+}
+
+// Free scrape first; Apify only if scrape came up empty AND a token exists.
+export async function tabelogSearch(env, { query, area = '', limit = 12 }) {
+  const q = (query || '').toString().trim();
+  if (!q) return { error: 'no_query', places: [] };
+  const scraped = await tabelogScrape({ query: q, area, limit });
+  if (scraped.places && scraped.places.length) return scraped;
+  if (env.APIFY_TOKEN) {
+    const a = await tabelogApify(env, { query: q, area, limit });
+    if (a.places && a.places.length) return a;
+    return { error: scraped.error || a.error, places: [] };
+  }
+  return { error: scraped.error, places: [] };
 }

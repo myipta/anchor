@@ -8,7 +8,7 @@
 
 import { json, preflight, requireMethod } from './_lib.js';
 import { tabelogSearch } from './_tabelog.js';
-import { runSearch } from './_search.js';
+import { runSearch, lookupPlace } from './_search.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -25,8 +25,25 @@ export async function onRequest(context) {
 
   let places = [], source = null, tabelogError;
   const t = await tabelogSearch(env, { query, area, limit: 14 });
-  if (t.places && t.places.length) { places = t.places; source = 'tabelog'; }
-  else {
+  if (t.places && t.places.length) {
+    places = t.places; source = t.source || 'tabelog';
+    // Tabelog scrape often lacks coords/open-now — backfill from Google so the
+    // distance-to-hotel pill and open/closed status still work.
+    if (env.GOOGLE_PLACES_API_KEY) {
+      const top = places.slice(0, 6).filter(p => !p.coords);
+      await Promise.all(top.map(async p => {
+        const info = await lookupPlace(env, p.name, p.area);
+        if (info) {
+          if (!p.coords) p.coords = info.coords;
+          if (p.openNow == null) p.openNow = info.openNow;
+          if (!p.budget) p.budget = info.budget;
+          if (!p.category) p.category = info.category;
+          if (!p.googleUrl) p.googleUrl = info.googleUrl;
+          if (p.rating == null) p.rating = info.rating; // Google rating alongside the Tabelog score
+        }
+      }));
+    }
+  } else {
     tabelogError = t.error;
     const g = await runSearch(env, { query, area, taste, prefs, limit: 14, fast: true });
     places = (g.places || []).map(p => ({ ...p, why: p.reason || '' }));
@@ -34,7 +51,7 @@ export async function onRequest(context) {
   }
 
   places = places.filter(p => !savedSet.has(String(p.name || '').toLowerCase()));
-  // Currently-open first (Google has open-now; Tabelog usually doesn't).
+  // Currently-open first when we know it.
   places.sort((a, b) => (a.openNow === 'closed' ? 1 : 0) - (b.openNow === 'closed' ? 1 : 0));
   places = places.slice(0, 5);
 
