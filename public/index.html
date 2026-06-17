@@ -2089,21 +2089,31 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
     const ctx=context();
     const res=await API.concierge(hist,ctx,model);
     setBusy(false);
-    if(onLearn&&res.learned&&((res.learned.likes&&res.learned.likes.length)||(res.learned.dislikes&&res.learned.dislikes.length)))
-      onLearn(res.learned.likes||[],res.learned.dislikes||[]);
     if(onSetup&&res.updates&&Object.keys(res.updates).length) onSetup(res.updates);
+    // Only surface taste we don't already know — avoids "Noted: tofu kaiseki" spam.
+    const known=new Set([...((trip.taste&&trip.taste.likes)||[]),...((trip.taste&&trip.taste.dislikes)||[])].map(s=>String(s).toLowerCase()));
+    const newL=(((res.learned||{}).likes)||[]).filter(t=>!known.has(String(t).toLowerCase()));
+    const newD=(((res.learned||{}).dislikes)||[]).filter(t=>!known.has(String(t).toLowerCase()));
+    if(onLearn&&(newL.length||newD.length)) onLearn(newL,newD);
     // Phase 1: show the reply immediately.
     const mid='a'+Date.now()+Math.random().toString(36).slice(2,5);
-    const wantCards=res.recommend&&!res.error;
-    setMsgs(m=>[...(m||[]),{id:mid,role:'anchor',text:res.reply||'Tell me a bit more?',places:[],chips:res.chips||[],learned:res.learned||null,loadingCards:wantCards}]);
-    // Phase 2: stream in grounded Tabelog (→ Google) cards.
+    const wantCards=(res.recommend||!!(res.search||'').trim())&&!res.error;
+    setMsgs(m=>[...(m||[]),{id:mid,role:'anchor',text:res.reply||'Tell me a bit more?',places:[],chips:res.chips||[],learned:(newL.length||newD.length)?{likes:newL,dislikes:newD}:null,loadingCards:wantCards}]);
+    // Phase 2: stream in grounded cards.
     if(wantCards){
       const q=(res.search||text).trim();
       // Exclude saved, previously-skipped, and anything already shown this chat.
       const shown=(msgs||[]).flatMap(x=>(x.places||[]).map(p=>p.name)).filter(Boolean);
       const saved=[...(ctx.anchored||[]),...(ctx.ideas||[]),...(trip.skippedRecs||[]),...shown];
       const tr=await API.tabelog(q,res.area||hotelArea,trip.taste||{likes:[],dislikes:[]},trip.prefs||[],saved);
-      setMsgs(m=>(m||[]).map(x=>x.id===mid?{...x,places:tr.places||[],loadingCards:false,source:tr.source}:x));
+      const got=tr.places||[];
+      setMsgs(m=>(m||[]).map(x=>x.id===mid?(got.length
+        ? {...x,places:got,loadingCards:false,source:tr.source}
+        // No results (often: exhausted the pool after filtering) — be honest, not a phantom batch.
+        : {...x,places:[],loadingCards:false,source:tr.source,
+            text:`I’ve shown you the ${q} spots I can find near ${hotelArea||'there'} for now. Want me to widen the area, or try a related style?`,
+            chips:['Search a wider area','Try a related style','Pick a different cuisine']}
+      ):x));
     }
   };
   // Act on a card: record the memory + disable it in place (no new search), with
@@ -2220,7 +2230,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
               </div>
             )}
 
-            {i===lastIdx&&m.role==='anchor'&&m.chips&&m.chips.length>0&&!busy&&(
+            {i===lastIdx&&m.role==='anchor'&&m.chips&&m.chips.length>0&&!busy&&!(m.places&&m.places.length)&&(
               <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:1}}>
                 {m.chips.map(c=>(
                   <button key={c} onClick={()=>send(c)} style={{border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'7px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{c}</button>

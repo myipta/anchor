@@ -24,30 +24,23 @@ export async function onRequest(context) {
   const savedSet = new Set((Array.isArray(body.saved) ? body.saved : []).map(s => String(s || '').toLowerCase()));
 
   let places = [], source = null, tabelogError;
-  const t = await tabelogSearch(env, { query, area, limit: 14 });
-  if (t.places && t.places.length) {
-    places = t.places; source = t.source || 'tabelog';
-    // Tabelog scrape often lacks coords/open-now — backfill from Google so the
-    // distance-to-hotel pill and open/closed status still work.
-    if (env.GOOGLE_PLACES_API_KEY) {
-      const top = places.slice(0, 6).filter(p => !p.coords);
-      await Promise.all(top.map(async p => {
-        const info = await lookupPlace(env, p.name, p.area);
-        if (info) {
-          if (!p.coords) p.coords = info.coords;
-          if (p.openNow == null) p.openNow = info.openNow;
-          if (!p.budget) p.budget = info.budget;
-          if (!p.category) p.category = info.category;
-          if (!p.googleUrl) p.googleUrl = info.googleUrl;
-          if (p.rating == null) p.rating = info.rating; // Google rating alongside the Tabelog score
-        }
-      }));
-    }
+  // Google first: it reliably respects the query (tofu kaiseki != sushi). Tabelog
+  // (Apify) is only tried if Google returns nothing — until its input schema is
+  // confirmed via the health probe it returns generic/popular results.
+  const g = await runSearch(env, { query, area, taste, prefs, limit: 14, fast: true });
+  if (g.places && g.places.length) {
+    places = g.places.map(p => ({ ...p, why: p.reason || '' })); source = 'google';
   } else {
-    tabelogError = t.error;
-    const g = await runSearch(env, { query, area, taste, prefs, limit: 14, fast: true });
-    places = (g.places || []).map(p => ({ ...p, why: p.reason || '' }));
-    source = places.length ? 'google' : null;
+    const t = await tabelogSearch(env, { query, area, limit: 14 });
+    if (t.places && t.places.length) {
+      places = t.places; source = t.source || 'tabelog';
+      if (env.GOOGLE_PLACES_API_KEY) {
+        await Promise.all(places.slice(0, 6).filter(p => !p.coords).map(async p => {
+          const info = await lookupPlace(env, p.name, p.area);
+          if (info) { p.coords = p.coords || info.coords; p.openNow = p.openNow ?? info.openNow; p.googleUrl = p.googleUrl || info.googleUrl; }
+        }));
+      }
+    } else { tabelogError = t.error; }
   }
 
   places = places.filter(p => !savedSet.has(String(p.name || '').toLowerCase()));
