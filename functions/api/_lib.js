@@ -37,13 +37,18 @@ export function extractJson(text) {
 // Call DeepSeek (OpenAI-compatible chat completions). Returns
 // { text, model } on success or { error, status, detail } on failure.
 // Used for the cheap/fast "Haiku-tier" work. Key: DEEPSEEK_API_KEY.
-export async function callDeepSeek(env, { system, user, maxTokens = 1024, json: wantJson = false }) {
+export async function callDeepSeek(env, { system, user, maxTokens = 1024, json: wantJson = false, think = false }) {
   const model = env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: user });
 
   const body = { model, messages, max_tokens: maxTokens, stream: false };
+  // deepseek-v4-pro is a thinking model: with thinking ON it spends the token
+  // budget on hidden reasoning_content and returns an EMPTY content. Our calls
+  // are short structured extractions, so disable thinking → the answer lands in
+  // message.content directly (and fast). Pass think:true to opt back in.
+  body.thinking = { type: think ? 'enabled' : 'disabled' };
   // DeepSeek honors OpenAI-style JSON mode; the prompt must mention "json".
   if (wantJson) body.response_format = { type: 'json_object' };
 
@@ -65,7 +70,12 @@ export async function callDeepSeek(env, { system, user, maxTokens = 1024, json: 
     return { error: 'deepseek_error', status: r.status, detail: detail.slice(0, 500) };
   }
   const data = await r.json();
-  const text = (data.choices?.[0]?.message?.content || '').trim();
-  return { text, model };
+  const choice = data.choices?.[0] || {};
+  const msg = choice.message || {};
+  // Prefer the final answer (content). If a thinking model still left content
+  // empty, salvage from reasoning_content so callers never get a blank string.
+  let text = (msg.content || '').trim();
+  if (!text && msg.reasoning_content) text = String(msg.reasoning_content).trim();
+  return { text, model, finish: choice.finish_reason || null };
 }
 

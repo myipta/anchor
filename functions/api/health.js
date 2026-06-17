@@ -25,9 +25,40 @@ export async function onRequest(context) {
 
   const url = new URL(request.url);
   if (url.searchParams.get('probe')) {
-    base.probe = { deepseek: await probeDeepseek(env) };
+    base.probe = {
+      deepseek: await probeDeepseek(env),
+      places: await probePlaces(env),
+    };
   }
   return json(base);
+}
+
+// Minimal live Google Places text search to confirm search actually returns
+// results (a present-but-disabled/unbilled key is the usual "nothing comes back").
+async function probePlaces(env) {
+  if (!env.GOOGLE_PLACES_API_KEY) return { configured: false, message: 'GOOGLE_PLACES_API_KEY is not set' };
+  const t0 = Date.now();
+  let r;
+  try {
+    r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': 'places.displayName' },
+      body: JSON.stringify({ textQuery: 'coffee in Shibuya, Tokyo', maxResultCount: 3, languageCode: 'en', regionCode: 'JP' }),
+    });
+  } catch (e) {
+    return { configured: true, error: 'fetch_failed', detail: String(e).slice(0, 300), ms: Date.now() - t0 };
+  }
+  const text = await r.text();
+  let count = null;
+  try { count = (JSON.parse(text)?.places || []).length; } catch {}
+  return {
+    configured: true,
+    status: r.status,
+    ok: r.ok,
+    count,            // >0 means search will return results
+    ms: Date.now() - t0,
+    detail: r.ok ? undefined : text.slice(0, 400), // raw error (e.g. API disabled / billing)
+  };
 }
 
 // Minimal live DeepSeek call to surface the real failure reason.
@@ -40,14 +71,20 @@ async function probeDeepseek(env) {
     r = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${env.DEEPSEEK_API_KEY}` },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 5, stream: false }),
+      // Mirror callDeepSeek: thinking disabled so the answer lands in content.
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 20, stream: false, thinking: { type: 'disabled' } }),
     });
   } catch (e) {
     return { configured: true, model, error: 'fetch_failed', detail: String(e).slice(0, 300), ms: Date.now() - t0 };
   }
   const text = await r.text();
-  let reply = null;
-  try { reply = JSON.parse(text)?.choices?.[0]?.message?.content; } catch {}
+  let reply = null, finish = null, hadReasoning = false;
+  try {
+    const c = JSON.parse(text)?.choices?.[0] || {};
+    reply = c.message?.content;
+    finish = c.finish_reason ?? null;
+    hadReasoning = Boolean(c.message?.reasoning_content);
+  } catch {}
   return {
     configured: true,
     model,
@@ -55,6 +92,8 @@ async function probeDeepseek(env) {
     ok: r.ok,
     ms: Date.now() - t0,
     reply: reply ?? null,
+    finish,            // 'stop' = healthy; 'length' = budget exhausted (thinking leak)
+    thinkingLeak: hadReasoning, // true if the model still emitted reasoning_content
     detail: r.ok ? undefined : text.slice(0, 400), // raw error body (e.g. "Insufficient Balance")
   };
 }
