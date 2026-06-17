@@ -133,6 +133,37 @@ export async function tabelogProbe(env, { query = 'ramen', area = 'Shinjuku' } =
   return out;
 }
 
+// Ask Apify (with the server's token) for the actor's REAL input schema +
+// example input, so we can map the query to the correct field names. The token
+// is never returned. Used by /api/health?actor=1.
+export async function tabelogActorInfo(env) {
+  if (!env.APIFY_TOKEN) return { error: 'no_token' };
+  const actor = (env.APIFY_TABELOG_ACTOR || 'parseforge~tabelog-scraper').replace('/', '~');
+  let r;
+  try { r = await fetch(`https://api.apify.com/v2/acts/${actor}?token=${encodeURIComponent(env.APIFY_TOKEN)}`); }
+  catch (e) { return { error: 'fetch_failed', detail: String(e).slice(0, 150) }; }
+  if (!r.ok) { const d = await r.text(); return { error: 'http_' + r.status, detail: d.slice(0, 200) }; }
+  let j; try { j = await r.json(); } catch { return { error: 'parse' }; }
+  const data = j.data || {};
+  let exampleInput = null;
+  try { if (data.exampleRunInput && data.exampleRunInput.body) exampleInput = JSON.parse(data.exampleRunInput.body); }
+  catch { exampleInput = data.exampleRunInput && data.exampleRunInput.body; }
+  let inputProps = null;
+  try {
+    const buildId = data.taggedBuilds && data.taggedBuilds.latest && data.taggedBuilds.latest.buildId;
+    if (buildId) {
+      const br = await fetch(`https://api.apify.com/v2/acts/${actor}/builds/${buildId}?token=${encodeURIComponent(env.APIFY_TOKEN)}`);
+      if (br.ok) {
+        const bj = await br.json();
+        const is = bj.data && bj.data.inputSchema;
+        const schema = typeof is === 'string' ? JSON.parse(is) : is;
+        if (schema && schema.properties) inputProps = Object.entries(schema.properties).map(([k, v]) => `${k}: ${(v && v.type) || '?'}${v && v.editor ? '/' + v.editor : ''}`);
+      }
+    }
+  } catch {}
+  return { name: data.name, title: data.title, exampleInput, inputProps };
+}
+
 // Look up ONE restaurant by exact name on Tabelog to get its DIRECT page URL
 // (+ score) — used to deep-link Google-sourced cards into the Tabelog app
 // instead of a name search. Fails soft (returns null).
