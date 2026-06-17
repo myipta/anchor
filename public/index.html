@@ -2065,7 +2065,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
   useEffect(()=>{ if(!convo) setConvo([{role:'anchor',text:greet}]); },[]); // eslint-disable-line
   const [input,setInput]=useState('');
   const [busy,setBusy]=useState(false);
-  const [skipped,setSkipped]=useState({});
+  // Per-card actions are stored on the message (m.acted) so they persist.
   const [model,setModelState]=useState(()=>{try{return localStorage.getItem('anchor_model')||'claude';}catch{return 'claude';}});
   const setModel=mo=>{ setModelState(mo); try{localStorage.setItem('anchor_model',mo);}catch{} };
   const scrollRef=React.useRef(null);
@@ -2106,7 +2106,19 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
       setMsgs(m=>(m||[]).map(x=>x.id===mid?{...x,places:tr.places||[],loadingCards:false,source:tr.source}:x));
     }
   };
-  const skip=key=>setSkipped(s=>({...s,[key]:true}));
+  // Act on a card: record the memory + disable it in place (no new search), with
+  // a personal note. Stored on the message so it survives tab switches/reload.
+  const actTone=t=>(t==='save'||t==='anchor'||t==='like')?{bg:'#EAF7F1',fg:'#0E865B'}:{bg:'#F1F1F6',fg:'#6C6E8E'};
+  const actCard=(mid,j,p,type)=>{
+    let label='';
+    if(type==='save'){ onStash&&onStash(p,'idea'); label='Saved to your scratchpad'; }
+    else if(type==='anchor'){ onStash&&onStash(p,'anchored'); label='Anchored — I’ll build around it'; }
+    else if(type==='like'){ if(p.category) onLearn&&onLearn([p.category],[]); label='Noted — I’ll lean toward this'; }
+    else if(type==='dislike'){ onSkipRec&&onSkipRec(p.name); label='Got it — skipping this and similar'; }
+    else { onSkipRec&&onSkipRec(p.name); label='Skipped — I won’t show it again'; }
+    setConvo&&setConvo(prev=>(prev||[]).map(x=>x.id===mid?{...x,acted:{...(x.acted||{}),[j]:{type,label}}}:x));
+  };
+  const undoCard=(mid,j)=>setConvo&&setConvo(prev=>(prev||[]).map(x=>x.id===mid?{...x,acted:Object.fromEntries(Object.entries(x.acted||{}).filter(([k])=>k!==String(j)))}:x));
   const md=s=>String(s||'').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/\*([^*]+)\*/g,'$1'); // strip stray markdown
   const lastIdx=msgs.length-1;
 
@@ -2151,12 +2163,25 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
               </div>
             )}
 
-            {m.places&&m.places.some((p,j)=>!skipped[i+'-'+j])&&(
+            {m.places&&m.places.length>0&&(
               <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                {m.places.map((p,j)=>{const key=i+'-'+j; if(skipped[key]) return null; return(
-                  <SwipeCard key={key} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
-                    onSwipeRight={()=>onStash&&onStash(p,'idea')} onSwipeRightFar={()=>onStash&&onStash(p,'anchored')}
-                    onSwipeLeft={()=>{skip(key); onSkipRec&&onSkipRec(p.name);}} onTap={()=>{const u=p.tabelogUrl||p.googleUrl; if(u)window.open(u,'_blank','noopener');}}>
+                {m.places.map((p,j)=>{const a=m.acted&&m.acted[j];
+                  if(a){const tn=actTone(a.type);return(
+                    <div key={j} style={{display:'flex',alignItems:'center',gap:11,background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',opacity:0.72}}>
+                      <div style={{width:38,height:38,borderRadius:11,flexShrink:0,background:tn.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        {(a.type==='save'||a.type==='anchor')?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tn.fg} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>:<ThumbIco up={a.type==='like'} size={16} color={tn.fg}/>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14.5,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
+                        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:tn.fg,marginTop:1}}>{a.label}</div>
+                      </div>
+                      <button onClick={()=>undoCard(m.id,j)} style={{flexShrink:0,border:'none',background:'transparent',color:'#9092AD',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,cursor:'pointer'}}>Undo</button>
+                    </div>
+                  );}
+                  return(
+                  <SwipeCard key={j} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
+                    onSwipeRight={()=>actCard(m.id,j,p,'save')} onSwipeRightFar={()=>actCard(m.id,j,p,'anchor')}
+                    onSwipeLeft={()=>actCard(m.id,j,p,'skip')} onTap={()=>{const u=p.tabelogUrl||p.googleUrl; if(u)window.open(u,'_blank','noopener');}}>
                   <div style={{background:'#fff',borderRadius:18,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
                     <div style={{display:'flex',gap:12}}>
                       <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={28} style={{width:64,height:64,borderRadius:13,flexShrink:0}}/>
@@ -2177,16 +2202,21 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
                     <div style={{marginTop:9,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                       <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} tabelogUrl={p.tabelogUrl} label={false}/>
                       <div style={{display:'flex',gap:7,flexShrink:0}}>
-                        <button onClick={e=>{e.stopPropagation();send('More spots like '+p.name+', please.');}} aria-label="More like this" title="More like this" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
-                        <button onClick={e=>{e.stopPropagation();send('Not '+p.name+' — show me something different.');}} aria-label="Not for me" title="Not for me" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
+                        <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'like');}} aria-label="More like this" title="More like this" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
+                        <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'dislike');}} aria-label="Not for me" title="Not for me" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
                       </div>
                     </div>
                   </div>
                   </SwipeCard>
-                );})}
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center'}}>Swipe right → save · far right → anchor · left → skip</div>
+                  );})}
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center'}}>Swipe right → save · far right → anchor · left → skip · 👍/👎 to teach me</div>
                 {m.source&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,color:'#9092AD',textAlign:'center'}}>{(m.source==='tabelog'||m.source==='tabelog-apify')?'食 Ranked on Tabelog':'Live from Google'}</div>}
-                {i===lastIdx&&!busy&&<button onClick={()=>send('Show me a few more options, different from those.')} style={{alignSelf:'center',marginTop:2,border:'1.5px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'9px 18px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:600,cursor:'pointer'}}>Show more places ↓</button>}
+                {i===lastIdx&&!busy&&m.places.every((p,j)=>m.acted&&m.acted[j])&&(
+                  <div style={{background:'#fff',borderRadius:16,padding:'13px 15px',boxShadow:'0 1px 2px rgba(22,23,42,0.06)',marginTop:2}}>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#353756',lineHeight:1.45}}>That’s my shortlist for now — nice work going through them. Want me to dig up a few more, or just tell me what’s next?</div>
+                    <button onClick={()=>send('A few more, please — different from those.')} style={{marginTop:10,border:'none',borderRadius:12,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontWeight:600,fontSize:14,padding:'10px 16px',cursor:'pointer'}}>Find a few more</button>
+                  </div>
+                )}
               </div>
             )}
 
