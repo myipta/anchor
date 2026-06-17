@@ -13,7 +13,7 @@ const PRICE = {
 };
 
 // Returns { source, count, places } on success, or { error, message, places:[] }.
-export async function runSearch(env, { query, area = '', taste = {}, prefs = [], limit = 14 }) {
+export async function runSearch(env, { query, area = '', taste = {}, prefs = [], limit = 14, fast = false }) {
   const q = (query || '').toString().trim();
   if (!q) return { error: 'no_query', places: [] };
   const a = (area || '').toString().trim();
@@ -21,9 +21,10 @@ export async function runSearch(env, { query, area = '', taste = {}, prefs = [],
   const t = (taste && typeof taste === 'object') ? taste : {};
   const p = Array.isArray(prefs) ? prefs.slice(0, 20) : [];
 
-  // 1) Raw list — Apify first (real Google Maps results), Google Places fallback.
+  // 1) Raw list — Apify gives richer data but its sync run is slow; `fast` skips
+  // it for the Google Places text search (sub-second, and includes open-now).
   let places = [], source = null;
-  if (env.APIFY_TOKEN) {
+  if (!fast && env.APIFY_TOKEN) {
     const r = await apifyGoogleMaps(env, q, a, lim);
     if (!r.error && r.places.length) { places = r.places; source = 'apify-google-maps'; }
   }

@@ -1,42 +1,49 @@
 // POST /api/concierge
-// Body: { messages:[{role,content}], context:{ taste, prefs, hotelArea, hotelName, arrivalDate, nights, saved:[names] } }
-// Returns: { model, reply, places:[{name,area,why}], learned:{likes,dislikes}, updates, chips }
+// Body: { messages:[{role,content}], context:{...}, model?:'claude'|'deepseek' }
+// Returns: { model, reply, places, learned, updates, chips }
 //
-// A warm, knowledgeable Tokyo local you chat with — and your whole setup surface.
-// Claude replies conversationally, weaves in real place recommendations, learns
-// your taste, AND gathers trip setup (hotel, dates, interests) through the same
-// conversation so there's no separate onboarding. Knowledge-based by design
-// (no ratings/links) — it should feel like a friend, not a directory. Fails soft.
+// A warm Tokyo-local concierge that also handles trip setup. The chosen model
+// (Claude or DeepSeek) drives the conversation and decides WHAT to look for; the
+// actual recommendations are GROUNDED in a live Google Places search (open-now
+// aware) so we recommend real, currently-relevant venues instead of the model's
+// possibly-stale memory. Fails soft at every stage.
 
-import { json, preflight, requireMethod, extractJson } from './_lib.js';
-import { lookupPlace } from './_search.js';
+import { json, preflight, requireMethod, extractJson, callDeepSeek } from './_lib.js';
+import { runSearch, lookupPlace } from './_search.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+const EMPTY = { places: [], learned: { likes: [], dislikes: [] }, updates: {}, chips: [] };
 
 export async function onRequest(context) {
   const { request, env } = context;
   const pf = preflight(request); if (pf) return pf;
   const bad = requireMethod(request, 'POST'); if (bad) return bad;
 
-  if (!env.ANTHROPIC_API_KEY) {
-    return json({ error: 'missing_key', reply: 'The concierge needs ANTHROPIC_API_KEY set on the server.', places: [], learned: { likes: [], dislikes: [] }, updates: {}, chips: [] }, 503);
-  }
-
   let body; try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
+  const model = body.model === 'deepseek' ? 'deepseek' : 'claude';
+
+  if (model === 'claude' && !env.ANTHROPIC_API_KEY)
+    return json({ error: 'missing_key', reply: 'Claude isn’t configured here (ANTHROPIC_API_KEY). Flip the switch to DeepSeek.', ...EMPTY }, 503);
+  if (model === 'deepseek' && !env.DEEPSEEK_API_KEY)
+    return json({ error: 'missing_key', reply: 'DeepSeek isn’t configured here. Flip the switch back to Claude.', ...EMPTY }, 503);
+
   const history = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
   const messages = history
     .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }))
     .filter(m => m.content);
   while (messages.length && messages[0].role === 'assistant') messages.shift();
-  if (!messages.length) return json({ error: 'no_messages', reply: 'Tell me what you’re in the mood for.', places: [], learned: { likes: [], dislikes: [] }, updates: {}, chips: [] }, 400);
+  if (!messages.length) return json({ error: 'no_messages', reply: 'Tell me what you’re in the mood for.', ...EMPTY }, 400);
 
   const ctx = (body.context && typeof body.context === 'object') ? body.context : {};
   const taste = ctx.taste || {};
   const likes = (Array.isArray(taste.likes) ? taste.likes : []).join(', ') || '(none yet)';
   const dislikes = (Array.isArray(taste.dislikes) ? taste.dislikes : []).join(', ') || '(none yet)';
-  const prefs = (Array.isArray(ctx.prefs) ? ctx.prefs : []).join(', ') || '(none)';
-  const anchored = (Array.isArray(ctx.anchored) ? ctx.anchored : []).slice(0, 25).join(', ') || '(none yet)';
-  const ideas = (Array.isArray(ctx.ideas) ? ctx.ideas : (Array.isArray(ctx.saved) ? ctx.saved : [])).slice(0, 25).join(', ') || '(none yet)';
+  const prefsArr = Array.isArray(ctx.prefs) ? ctx.prefs : [];
+  const prefs = prefsArr.join(', ') || '(none)';
+  const anchoredArr = Array.isArray(ctx.anchored) ? ctx.anchored : [];
+  const ideasArr = Array.isArray(ctx.ideas) ? ctx.ideas : [];
+  const anchored = anchoredArr.slice(0, 25).join(', ') || '(none yet)';
+  const ideas = ideasArr.slice(0, 25).join(', ') || '(none yet)';
   const hotelArea = (ctx.hotelArea || '').toString().trim();
   const hotelName = (ctx.hotelName || '').toString().trim();
   const arrivalDate = (ctx.arrivalDate || '').toString().trim();
@@ -44,64 +51,42 @@ export async function onRequest(context) {
   const nights = ctx.nights || 0;
   const haveStay = Boolean(hotelArea || hotelName);
   const haveDates = Boolean(arrivalDate && nights);
-  const MODEL = env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
-
   const setupLine = [
     haveStay ? `staying ${hotelName ? `at ${hotelName} ` : ''}${hotelArea ? `(${hotelArea})` : ''}`.trim() : 'stay NOT known yet',
     haveDates ? `${nights} nights from ${arrivalDate}` : 'dates NOT known yet',
   ].join('; ');
 
   const system =
-`You are Anchor — a warm, sharp Tokyo local the traveler is texting. You handle EVERYTHING through this one conversation: getting to know their trip AND recommending places. There is no separate setup form. Today is ${todayStr()}; the destination is always Tokyo.
+`You are Anchor — a warm, sharp Tokyo local the traveler is texting. You handle BOTH trip setup and recommendations in this one chat. Today is ${todayStr()}; the destination is always Tokyo.
 
-What you know so far:
+What you know:
 - Trip: ${setupLine}
 - Loves: ${likes}
 - Avoids: ${dislikes}
 - Interests: ${prefs}
-- ANCHORED places (they're building their trip around these — your strongest signal of taste): ${anchored}
-- Other saved ideas: ${ideas}
+- ANCHORED places (they're building their trip around these — your strongest taste signal): ${anchored}
+- Saved ideas: ${ideas}
 
-How to respond:
-- Talk like a knowledgeable friend who lives in Tokyo: concise, specific, a little opinionated. No bullet lists, no star ratings, no "here are some options". PLAIN TEXT ONLY — no markdown, asterisks, or bold.
-- SETUP, naturally: if you don't yet know their stay or dates, work ONE friendly question into your reply (never interrogate, never ask for everything at once). As you learn trip facts, put them in "updates". Parse relative dates ("next month", "the 14th") against today.
-- RECOMMEND: when it fits, suggest 1-4 SPECIFIC, REAL Tokyo places you know, each with a one-line reason tied to THIS person's taste. Favor places near ${hotelArea || 'wherever they mention'}. If they ask for more, suggest DIFFERENT places you haven't mentioned yet. If the message is just chatting, recommend nothing.
-- LEARN from their saves: the anchored/saved places above are strong evidence of what they love — infer the pattern (cuisines, vibe, price, neighborhoods) and lean into it. NEVER re-recommend a place they've already anchored or saved.
-- LEARN from the chat: extract any new taste signals from their latest message.
+Each turn do ALL of this:
+1) REPLY like a knowledgeable friend: concise, warm, specific. Plain text only — no markdown/asterisks. 2-4 sentences. Do NOT name specific venues in your reply — the app shows real, currently-open results as cards beneath it.
+2) RECOMMEND: if they want places, set recommend=true and write "search" = a precise Google-style query that captures intent AND constraints, especially TIMING. For "late night", include words like "open late" and lean to izakaya / ramen / bars; for breakfast, "morning"; etc. Set "area" = the Tokyo neighborhood to search (default to their hotel area ${hotelArea || '(unknown)'} unless they name another). If it's just chatting, recommend=false.
+3) SETUP: if stay or dates are unknown, work ONE friendly question into your reply and capture facts in "updates" (parse relative dates against today).
+4) LEARN: infer taste from their anchored/saved places and from this message.
 
 Output ONLY a JSON object, no prose:
-{"reply":"<your message>","places":[{"name":"<real place>","area":"<neighborhood>","why":"<one short clause for THEM>"}],"learned":{"likes":["..."],"dislikes":["..."]},"updates":{"hotelName":"<if learned>","hotelArea":"<Tokyo neighborhood if learned>","arrivalDate":"<YYYY-MM-DD if learned>","nights":<int if learned>,"prefs":["<interest tags if learned>"]},"chips":["<=3 short suggested replies"]}`;
+{"reply":"...","recommend":<bool>,"search":"<query or ''>","area":"<neighborhood or ''>","updates":{"hotelName":"","hotelArea":"","arrivalDate":"YYYY-MM-DD","nights":0,"prefs":[]},"learned":{"likes":[],"dislikes":[]},"chips":["<=3 short suggested replies"]}`;
 
-  let r;
-  try {
-    r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1000, system, messages }),
-    });
-  } catch (e) {
-    return json({ error: 'fetch_failed', reply: 'I lost my connection for a second — try that again?', places: [], learned: { likes: [], dislikes: [] }, updates: {}, chips: [], detail: String(e).slice(0, 200) }, 502);
-  }
-  if (!r.ok) {
-    const detail = await r.text();
-    return json({ error: 'anthropic_error', status: r.status, reply: 'Something went wrong reaching me — give it a moment and try again.', places: [], learned: { likes: [], dislikes: [] }, updates: {}, chips: [], detail: detail.slice(0, 400) }, 502);
+  const transcript = messages.map(m => `${m.role === 'user' ? 'Traveler' : 'Anchor'}: ${m.content}`).join('\n');
+  const out = await callModel(env, model, system, messages, transcript);
+  if (out.error) {
+    return json({ error: out.error, model, reply: 'I had trouble thinking just now — try again, or flip the model switch up top.', ...EMPTY, detail: out.detail }, 200);
   }
 
-  const data = await r.json();
-  const text = (data.content || []).map(b => b.text || '').join('').trim();
-  const parsed = extractJson(text) || { reply: text };
+  const parsed = extractJson(out.text) || { reply: out.text, recommend: false };
 
-  const places = Array.isArray(parsed.places) ? parsed.places
-    .filter(p => p && typeof p.name === 'string' && p.name.trim())
-    .slice(0, 4)
-    .map(p => ({ name: String(p.name).slice(0, 80), area: String(p.area || '').slice(0, 40), why: String(p.why || '').slice(0, 140) })) : [];
-
-  const ld = parsed.learned || {};
-  const clean = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 40)))].slice(0, 6) : [];
-  const learned = { likes: clean(ld.likes), dislikes: clean(ld.dislikes) };
-
-  // Validate trip-setup updates (only pass through fields we're confident about).
+  // ── trip-setup updates (validated) ──
   const u = parsed.updates || {};
+  const clean = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 40)))].slice(0, 6) : [];
   const updates = {};
   if (typeof u.hotelName === 'string' && u.hotelName.trim()) updates.hotelName = u.hotelName.trim().slice(0, 80);
   if (typeof u.hotelArea === 'string' && u.hotelArea.trim()) updates.hotelArea = u.hotelArea.trim().slice(0, 40);
@@ -109,22 +94,25 @@ Output ONLY a JSON object, no prose:
   if (Number.isFinite(u.nights)) updates.nights = Math.max(1, Math.min(60, Math.round(u.nights)));
   if (Array.isArray(u.prefs)) { const p = clean(u.prefs); if (p.length) updates.prefs = p; }
 
-  // Enrich recommendations with live Google data: coords (→ distance to hotel),
-  // rating, reviews, price, open-now, canonical name + maps link.
-  if (env.GOOGLE_PLACES_API_KEY && places.length) {
-    await Promise.all(places.map(async p => {
-      const info = await lookupPlace(env, p.name, p.area);
-      if (info) {
-        if (info.name) p.name = info.name;
-        p.rating = info.rating; p.reviews = info.reviews; p.budget = info.budget;
-        p.category = info.category; p.coords = info.coords; p.googleUrl = info.googleUrl;
-        p.address = info.address; p.openNow = info.openNow;
-      }
-    }));
+  const ld = parsed.learned || {};
+  const learned = { likes: clean(ld.likes), dislikes: clean(ld.dislikes) };
+  const chips = Array.isArray(parsed.chips) ? parsed.chips.filter(c => typeof c === 'string' && c.trim()).map(c => c.slice(0, 40)).slice(0, 3) : [];
+
+  // ── GROUNDED recommendations: live Google Places search for the model's query ──
+  let places = [];
+  const query = (parsed.search || '').toString().trim();
+  if (parsed.recommend && query) {
+    const r = await runSearch(env, { query: query.slice(0, 120), area: (parsed.area || hotelArea || '').toString().slice(0, 40), taste, prefs: prefsArr, limit: 12, fast: true });
+    let list = Array.isArray(r.places) ? r.places : [];
+    // Don't re-recommend places they've already saved/anchored.
+    const savedSet = new Set([...anchoredArr, ...ideasArr].map(s => String(s || '').toLowerCase()));
+    list = list.filter(p => !savedSet.has(String(p.name || '').toLowerCase()));
+    // Prefer currently-open spots (Google open-now); keep the model's why via reason.
+    list.sort((a, b) => (a.openNow === 'closed' ? 1 : 0) - (b.openNow === 'closed' ? 1 : 0));
+    places = list.slice(0, 4).map(p => ({ ...p, why: p.reason || p.why || '' }));
   }
 
-  // Make sure the hotel anchor has coordinates so distance-to-hotel works —
-  // geocode when the hotel was just set, or the client still has no coords.
+  // Ensure the hotel anchor has coordinates so distance-to-hotel works.
   const hName = updates.hotelName || hotelName;
   const hArea = updates.hotelArea || hotelArea;
   if (env.GOOGLE_PLACES_API_KEY && (hName || hArea) && (updates.hotelName || updates.hotelArea || !hotelCoords)) {
@@ -132,11 +120,31 @@ Output ONLY a JSON object, no prose:
     if (hi && hi.coords) updates.hotelCoords = hi.coords;
   }
 
-  const chips = Array.isArray(parsed.chips) ? parsed.chips.filter(c => typeof c === 'string' && c.trim()).map(c => c.slice(0, 40)).slice(0, 3) : [];
-
   return json({
-    model: MODEL,
-    reply: (String(parsed.reply || '').slice(0, 700)) || 'Tell me more about what you’re after.',
+    model: out.modelName || model,
+    reply: (String(parsed.reply || '').slice(0, 700)) || 'Tell me a bit more about what you’re after.',
     places, learned, updates, chips,
   });
+}
+
+// Call the selected model and return its raw text. Both return the same JSON
+// contract; Claude gets real multi-turn messages, DeepSeek gets a flat transcript.
+async function callModel(env, model, system, messages, transcript) {
+  if (model === 'deepseek') {
+    const o = await callDeepSeek(env, { system, user: transcript, maxTokens: 800, json: true });
+    if (o.error) return { error: o.error, detail: o.detail };
+    return { text: o.text, modelName: 'deepseek' };
+  }
+  const MODEL = env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1000, system, messages }),
+    });
+  } catch (e) { return { error: 'fetch_failed', detail: String(e).slice(0, 200) }; }
+  if (!r.ok) { const d = await r.text(); return { error: 'anthropic_error', detail: d.slice(0, 300) }; }
+  let data; try { data = await r.json(); } catch { return { error: 'anthropic_parse' }; }
+  return { text: (data.content || []).map(b => b.text || '').join('').trim(), modelName: 'claude' };
 }
