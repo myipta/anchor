@@ -7,7 +7,7 @@
 // back to a fast Google Places search if Tabelog is unconfigured or empty.
 
 import { json, preflight, requireMethod } from './_lib.js';
-import { tabelogSearch } from './_tabelog.js';
+import { tabelogSearch, tabelogLookup } from './_tabelog.js';
 import { runSearch, lookupPlace } from './_search.js';
 
 export async function onRequest(context) {
@@ -47,6 +47,14 @@ export async function onRequest(context) {
   // Currently-open first when we know it.
   places.sort((a, b) => (a.openNow === 'closed' ? 1 : 0) - (b.openNow === 'closed' ? 1 : 0));
   places = places.slice(0, 5);
+
+  // Attach each pick's DIRECT Tabelog page URL (+ score) so tapping opens the
+  // Tabelog app instead of a name search. Fails soft → keeps the search link.
+  await Promise.all(places.map(async p => {
+    if (p.tabelogUrl) return;
+    const tl = await tabelogLookup({ name: p.name, area: p.area });
+    if (tl) { p.tabelogUrl = tl.tabelogUrl; if (p.tabelogRating == null && tl.tabelogRating != null) p.tabelogRating = tl.tabelogRating; }
+  }));
 
   return json({ places, source, tabelogError });
 }

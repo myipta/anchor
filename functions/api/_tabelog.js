@@ -129,6 +129,18 @@ export async function tabelogProbe(env, { query = 'ramen', area = 'Shinjuku' } =
   return out;
 }
 
+// Look up ONE restaurant by exact name on Tabelog to get its DIRECT page URL
+// (+ score) — used to deep-link Google-sourced cards into the Tabelog app
+// instead of a name search. Fails soft (returns null).
+export async function tabelogLookup({ name, area }) {
+  if (!name) return null;
+  const r = await tabelogScrape({ query: name, area, limit: 5 });
+  if (!r.places || !r.places.length) return null;
+  const n = String(name).toLowerCase();
+  const best = r.places.find(p => p.name && (p.name.toLowerCase().includes(n) || n.includes(p.name.toLowerCase()))) || r.places[0];
+  return best && best.tabelogUrl ? { tabelogUrl: best.tabelogUrl, tabelogRating: best.tabelogRating } : null;
+}
+
 // With an Apify token, use the real actor (respects the query). Without one, try
 // the free scrape. Either way, the caller (/api/tabelog) falls back to Google —
 // which reliably honors the query — so we never get stuck on generic results.
