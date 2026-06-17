@@ -5,6 +5,7 @@
 // returns the key, only the HTTP status and a short error snippet.
 
 import { json, preflight } from './_lib.js';
+import { tabelogProbe } from './_tabelog.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -37,6 +38,7 @@ export async function onRequest(context) {
     base.probe = {
       deepseek: await probeDeepseek(env),
       places: await probePlaces(env),
+      tabelog: await tabelogProbe(env, {}),
     };
   }
   return json(base);

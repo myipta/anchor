@@ -114,6 +114,21 @@ async function tabelogApify(env, { query, area, limit }) {
   return places.length ? { places, source: 'tabelog-apify' } : { error: 'apify_empty', places: [] };
 }
 
+// Diagnostic: run both paths for a sample query and report what each returns,
+// so /api/health?probe=1 can show why Tabelog falls back to Google.
+export async function tabelogProbe(env, { query = 'ramen', area = 'Shinjuku' } = {}) {
+  const s = await tabelogScrape({ query, area, limit: 5 });
+  const sample = ps => (ps && ps[0]) ? { name: ps[0].name, url: ps[0].tabelogUrl, rating: ps[0].tabelogRating } : null;
+  const out = { scrape: { count: (s.places || []).length, error: s.error || null, sample: sample(s.places) } };
+  if (env.APIFY_TOKEN) {
+    const a = await tabelogApify(env, { query, area, limit: 5 });
+    out.apify = { count: (a.places || []).length, error: a.error || null, status: a.status || null, detail: a.detail || null, sample: sample(a.places) };
+  } else {
+    out.apify = { configured: false };
+  }
+  return out;
+}
+
 // Free scrape first; Apify only if scrape came up empty AND a token exists.
 export async function tabelogSearch(env, { query, area = '', limit = 12 }) {
   const q = (query || '').toString().trim();
