@@ -708,6 +708,12 @@ function draftToInit(d){
   };
 }
 
+// A minimal valid trip so new users land straight in the concierge (no setup
+// form). The concierge fills in hotel/dates/interests through conversation.
+function blankTrip(){return {destination:'Tokyo',arrivalDate:'',nights:0,anchors:[],prefs:[],anchoredPlaces:[],taste:{likes:[],dislikes:[]},createdAt:Date.now()};}
+// "Not set up yet" = no hotel anchor and no arrival date.
+function tripNeedsSetup(t){return !t||(!((t.anchors||[]).length)&&!t.arrivalDate);}
+
 function DraftPill({children}){
   return <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.14)',color:'#fff',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>{children}</span>;
 }
@@ -2018,13 +2024,19 @@ function GoogleResultCard({p}){
 }
 
 /* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
-function SearchScreen({push,onStash,trip,onLearn}) {
-  // The Search tab is a conversation with a knowledgeable Tokyo local (Claude).
-  // It recommends real places woven into chat and learns your taste as you talk.
-  const hotelArea=(trip.anchors&&trip.anchors[0]&&trip.anchors[0].area)||trip.hotelArea||'';
-  const greet=hotelArea
-    ? `Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. Tell me what you're in the mood for and I'll point you to the good stuff — coffee, a first dinner, something to do tomorrow?`
-    : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love. What are you in the mood for?";
+function SearchScreen({push,onStash,trip,onLearn,onSetup}) {
+  // The Search tab IS the app's home + setup: a conversation with a knowledgeable
+  // Tokyo local (Claude) that recommends real places, learns your taste, AND
+  // gathers your trip setup (hotel/dates/interests) — no separate onboarding form.
+  const anchor0=(trip.anchors&&trip.anchors[0])||null;
+  const hotelArea=(anchor0&&anchor0.area)||trip.hotelArea||'';
+  const hotelName=(anchor0&&anchor0.name)||'';
+  const needsSetup=tripNeedsSetup(trip);
+  const greet=needsSetup
+    ? "Hey — I'm your Tokyo local, and I'll help you plan this whole trip right here. To start: where are you staying (a hotel or a neighborhood), and roughly when's the trip?"
+    : (hotelArea
+      ? `Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`
+      : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love.");
   const [msgs,setMsgs]=useState([{role:'anchor',text:greet}]);
   const [input,setInput]=useState('');
   const [busy,setBusy]=useState(false);
@@ -2035,7 +2047,7 @@ function SearchScreen({push,onStash,trip,onLearn}) {
   const context=()=>({
     taste:trip.taste||{likes:[],dislikes:[]},
     prefs:trip.prefs||[],
-    hotelArea, nights:trip.nights,
+    hotelArea, hotelName, arrivalDate:trip.arrivalDate, nights:trip.nights,
     saved:[...(trip.scratchpad||[]).map(s=>s.name).filter(Boolean),
       ...((trip.anchoredPlaces||[]).map(id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)).filter(Boolean))].slice(0,20),
   });
@@ -2047,7 +2059,8 @@ function SearchScreen({push,onStash,trip,onLearn}) {
     setBusy(false);
     if(onLearn&&res.learned&&((res.learned.likes&&res.learned.likes.length)||(res.learned.dislikes&&res.learned.dislikes.length)))
       onLearn(res.learned.likes||[],res.learned.dislikes||[]);
-    setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Tell me a bit more?',places:res.places||[],chips:res.chips||[],learned:res.learned||null}]);
+    if(onSetup&&res.updates&&Object.keys(res.updates).length) onSetup(res.updates);
+    setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Tell me a bit more?',places:res.places||[],chips:res.chips||[],learned:res.learned||null,updates:res.updates||null}]);
   };
   const savePlace=(p,key)=>{ onStash&&onStash(p,'idea'); setSaved(s=>({...s,[key]:true})); };
   const mapsUrl=p=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(`${p.name} ${p.area||''} Tokyo`);
@@ -2059,8 +2072,12 @@ function SearchScreen({push,onStash,trip,onLearn}) {
         <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#FB7242,#F857A6)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{fontSize:20}}>⚓</span></div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Your Tokyo local</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>Chat for recommendations — the more you talk, the better</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{needsSetup?'Plan + recommendations, all in chat':'Chat for recommendations — the more you talk, the better'}</div>
         </div>
+        <button onClick={()=>push({type:'trip'})} aria-label="Trip controls" style={{flexShrink:0,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1,border:'1.5px solid '+(needsSetup?'#FBD9C9':'#E3E5F0'),background:needsSetup?'#FFF4EE':'#fff',borderRadius:12,padding:'7px 11px',cursor:'pointer'}}>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:12.5,color:needsSetup?'#E05B2B':'#16172A',lineHeight:1.1}}>{needsSetup?'Set up trip':(hotelArea||'Tokyo')}</span>
+          <span style={{fontFamily:"'Geist Mono',monospace",fontSize:10.5,color:'#9092AD'}}>{needsSetup?'or just chat':(trip.nights?`${trip.nights} nights`:'dates TBD')}</span>
+        </button>
       </div>
 
       <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'16px 14px 8px',display:'flex',flexDirection:'column',gap:13}}>
@@ -2643,11 +2660,14 @@ function BottomNav({tab,setTab}) {
 
 /* ── APP ── */
 function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
-  const [trip,setTrip]=useState(()=> initialTrip!==undefined ? initialTrip : loadState());
+  const bootRaw=(initialTrip!==undefined?initialTrip:loadState());
+  const [trip,setTrip]=useState(()=> bootRaw || blankTrip());
   const [editingTrip,setEditingTrip]=useState(false);
-  const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form'
+  const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form' (legacy edit form)
   const [formInit,setFormInit]=useState(null);
-  const [tab,setTab]=useState('today');
+  // New / not-yet-set-up trips land in the concierge (Search) so setup happens
+  // through conversation; returning users land on Today.
+  const [tab,setTab]=useState(tripNeedsSetup(bootRaw)?'search':'today');
   const [layout,setLayout]=useState('A');
   const [filter,setFilter]=useState('all');
   const [added,setAdded]=useState({});
@@ -2679,6 +2699,26 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
 
   // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
   const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveState(t);setTrip(t);onCloudSync&&onCloudSync(t);};
+  // Persist a freshly bootstrapped blank trip so a reload keeps it.
+  useEffect(()=>{ if(!loadState()&&trip) saveState(trip); },[]); // eslint-disable-line
+  // Apply trip setup the concierge gathered through conversation (no setup form).
+  const onSetup=updates=>{
+    if(!updates||typeof updates!=='object'||!Object.keys(updates).length) return;
+    const t={...trip};
+    if(updates.arrivalDate) t.arrivalDate=updates.arrivalDate;
+    if(updates.nights) t.nights=updates.nights;
+    if(t.arrivalDate&&t.nights) t.departureDate=addDays(t.arrivalDate,t.nights);
+    if(Array.isArray(updates.prefs)&&updates.prefs.length) t.prefs=[...new Set([...(t.prefs||[]),...updates.prefs])];
+    if(updates.hotelName||updates.hotelArea){
+      const anchors=[...(t.anchors||[])];
+      const name=updates.hotelName||(anchors[0]&&anchors[0].name)||'My stay';
+      const area=updates.hotelArea||(anchors[0]&&anchors[0].area)||'Tokyo';
+      if(anchors[0]) anchors[0]={...anchors[0],name,area};
+      else anchors.unshift({id:'anc-0',name,area,checkin:t.arrivalDate||todayStr(),checkout:t.departureDate||''});
+      t.anchors=anchors;
+    }
+    persist(t);
+  };
   const handleTripComplete=t=>{persist(t);setEditingTrip(false);setOnbPhase('chat');setFormInit(null);};
   const handleAnchorPlace=id=>{
     const ap=trip?.anchoredPlaces||[];
@@ -2778,14 +2818,12 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     const it={...(trip.itinerary||{})}; it[dayIndex]=ordered; persist({...trip,itinerary:it});
   };
 
-  if(!trip||editingTrip) return(
+  // Onboarding is now the concierge itself; the form only appears for an
+  // explicit "edit trip" from the trip controls.
+  if(editingTrip) return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        {!trip&&!editingTrip&&onbPhase==='chat'
-          ? <ChatOnboarding
-              onComplete={d=>{setFormInit(draftToInit(d));setOnbPhase('form');}}
-              onSkip={()=>{setFormInit(null);setOnbPhase('form');}}/>
-          : <OnboardingFlow onComplete={handleTripComplete} initialData={editingTrip?trip:formInit}/>}
+        <OnboardingFlow onComplete={handleTripComplete} initialData={trip}/>
       </div>
     </div>
   );
@@ -2797,7 +2835,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
