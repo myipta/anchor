@@ -18,6 +18,7 @@ import { onRequest as near } from './functions/api/near.js';
 import { onRequest as refine } from './functions/api/refine.js';
 import { onRequest as photo } from './functions/api/photo.js';
 import { onRequest as search } from './functions/api/search.js';
+import { onRequest as concierge } from './functions/api/concierge.js';
 import { onRequest as authRequestCode } from './functions/api/auth-request-code.js';
 import { onRequest as authVerify } from './functions/api/auth-verify.js';
 import { onRequest as authMe } from './functions/api/auth-me.js';
@@ -35,6 +36,7 @@ const ROUTES = {
   '/api/refine': refine,
   '/api/photo': photo,
   '/api/search': search,
+  '/api/concierge': concierge,
   '/api/auth/request-code': authRequestCode,
   '/api/auth/verify': authVerify,
   '/api/auth/me': authMe,
