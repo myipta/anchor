@@ -129,16 +129,16 @@ export async function tabelogProbe(env, { query = 'ramen', area = 'Shinjuku' } =
   return out;
 }
 
-// Free scrape first; Apify only if scrape came up empty AND a token exists.
+// With an Apify token, use the real actor (respects the query). Without one, try
+// the free scrape. Either way, the caller (/api/tabelog) falls back to Google —
+// which reliably honors the query — so we never get stuck on generic results.
 export async function tabelogSearch(env, { query, area = '', limit = 12 }) {
   const q = (query || '').toString().trim();
   if (!q) return { error: 'no_query', places: [] };
-  const scraped = await tabelogScrape({ query: q, area, limit });
-  if (scraped.places && scraped.places.length) return scraped;
   if (env.APIFY_TOKEN) {
     const a = await tabelogApify(env, { query: q, area, limit });
-    if (a.places && a.places.length) return a;
-    return { error: scraped.error || a.error, places: [] };
+    return (a.places && a.places.length) ? a : { error: a.error || 'apify_empty', places: [] };
   }
-  return { error: scraped.error, places: [] };
+  const s = await tabelogScrape({ query: q, area, limit });
+  return (s.places && s.places.length) ? s : { error: s.error, places: [] };
 }

@@ -2045,7 +2045,7 @@ function GoogleResultCard({p}){
 }
 
 /* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
-function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
+function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConvo}) {
   // The Search tab IS the app's home + setup: a conversation with a knowledgeable
   // Tokyo local (Claude) that recommends real places, learns your taste, AND
   // gathers your trip setup (hotel/dates/interests) — no separate onboarding form.
@@ -2099,7 +2099,9 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
     // Phase 2: stream in grounded Tabelog (→ Google) cards.
     if(wantCards){
       const q=(res.search||text).trim();
-      const saved=[...(ctx.anchored||[]),...(ctx.ideas||[])];
+      // Exclude saved, previously-skipped, and anything already shown this chat.
+      const shown=(msgs||[]).flatMap(x=>(x.places||[]).map(p=>p.name)).filter(Boolean);
+      const saved=[...(ctx.anchored||[]),...(ctx.ideas||[]),...(trip.skippedRecs||[]),...shown];
       const tr=await API.tabelog(q,res.area||hotelArea,trip.taste||{likes:[],dislikes:[]},trip.prefs||[],saved);
       setMsgs(m=>(m||[]).map(x=>x.id===mid?{...x,places:tr.places||[],loadingCards:false,source:tr.source}:x));
     }
@@ -2154,7 +2156,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
                 {m.places.map((p,j)=>{const key=i+'-'+j; if(skipped[key]) return null; return(
                   <SwipeCard key={key} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
                     onSwipeRight={()=>onStash&&onStash(p,'idea')} onSwipeRightFar={()=>onStash&&onStash(p,'anchored')}
-                    onSwipeLeft={()=>skip(key)} onTap={()=>{const u=p.tabelogUrl||p.googleUrl; if(u)window.open(u,'_blank','noopener');}}>
+                    onSwipeLeft={()=>{skip(key); onSkipRec&&onSkipRec(p.name);}} onTap={()=>{const u=p.tabelogUrl||p.googleUrl; if(u)window.open(u,'_blank','noopener');}}>
                   <div style={{background:'#fff',borderRadius:18,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
                     <div style={{display:'flex',gap:12}}>
                       <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={28} style={{width:64,height:64,borderRadius:13,flexShrink:0}}/>
@@ -2852,6 +2854,9 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     if(likes.length!==(t.likes||[]).length||dislikes.length!==(t.dislikes||[]).length) persist({...trip,taste:{likes,dislikes}});
   },[]); // eslint-disable-line
   const likeCategory=tag=>{ if(tag) learnTaste([tag],[]); };
+  // Remember concierge recommendations the user skipped (by name) so they don't
+  // come back in future searches.
+  const skipRec=name=>{ if(!name) return; persist({...trip,skippedRecs:[...new Set([...(trip.skippedRecs||[]),String(name).toLowerCase().trim()])].slice(-300)}); };
   // Search dislike: learn why a result is wrong (AI if available, local otherwise).
   const rejectSearch=async(place,why)=>{
     const w=(why||'').trim();
@@ -2932,7 +2937,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup} convo={convo} setConvo={updateConvo}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup} onSkipRec={skipRec} convo={convo} setConvo={updateConvo}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
