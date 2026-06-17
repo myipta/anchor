@@ -187,6 +187,15 @@ const API={
       return {places:Array.isArray(d.places)?d.places:[],source:d.source};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
+  async searchChat(messages,taste,prefs,area){
+    try{
+      const r=await fetch('/api/searchchat',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({messages,taste,prefs,area})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',reply:d.reply||d.message||'Search failed.',places:[]};
+      return {action:d.action,reply:d.reply||'',places:Array.isArray(d.places)?d.places:[],source:d.source};
+    }catch{return {error:'network',reply:'Could not reach the server — try again in a moment.',places:[]};}
+  },
   async near(lat,lng,{radius=1200,type='all',limit=16,q=''}={}){
     try{
       const r=await fetch('/api/near',{method:'POST',headers:{'content-type':'application/json'},
@@ -1960,203 +1969,82 @@ function GoogleResultCard({p}){
 
 /* ── SEARCH ── */
 function SearchScreen({push,onStash,trip,onReject}) {
-  const [mode,setMode]=useState('saved'); // 'saved' | 'live'
-  const [q,setQ]=useState('');
-  const [live,setLive]=useState({loading:false,places:[],error:null,for:''});
-  const [hidden,setHidden]=useState({}); // keys removed (swiped/disliked) this search
-  const [rejKey,setRejKey]=useState(null); // card showing the "why not?" box
-  const [rejWhy,setRejWhy]=useState('');
-
-  // Live taste-ranked search (Apify/Google + DeepSeek) — debounced, fails soft.
-  useEffect(()=>{
-    if(mode!=='live'||q.trim().length<2){return;}
-    const term=q.trim();
-    let dead=false;
-    setLive(l=>({...l,loading:true,error:null}));
-    const t=setTimeout(()=>{
-      API.search(term,'',(trip&&trip.taste)||{likes:[],dislikes:[]},(trip&&trip.prefs)||[],14).then(res=>{
-        if(dead) return;
-        setHidden({}); setRejKey(null);
-        setLive({loading:false,places:res.places||[],error:res.error?(res.message||'Search failed'):null,for:term});
-      });
-    },550);
-    return ()=>{dead=true;clearTimeout(t);};
-  },[mode,q]); // eslint-disable-line
-  const liveVisible=live.places.map((p,i)=>({p,key:(p.googleUrl||p.name||'r')+i})).filter(x=>!hidden[x.key]);
-  const doReject=(p,key)=>{ onReject&&onReject(p,rejWhy); setHidden(h=>({...h,[key]:1})); setRejKey(null); setRejWhy(''); };
-
-  const allPlaces=Object.keys(PLACES).map(bp);
-  const results=mode!=='saved'||q.length<2?[]:allPlaces.filter(p=>{
-    const s=(p.name+p.area+p.catLabel+(p.note||'')+(p.reason||'')+(p.digest||'')).toLowerCase();
-    return s.includes(q.toLowerCase());
-  }).map(p=>{
-    const qLow=q.toLowerCase();
-    let why='';
-    if(p.name.toLowerCase().includes(qLow)) why='Name match';
-    else if(p.catLabel.toLowerCase().includes(qLow)) why=`Category: ${p.catLabel}`;
-    else if(p.area.toLowerCase().includes(qLow)) why=`Neighborhood: ${p.area}`;
-    else {
-      const text=p.note||p.reason||p.digest||'';
-      const idx=text.toLowerCase().indexOf(qLow);
-      if(idx>-1) {
-        const snip=text.slice(Math.max(0,idx-15),idx+50).trim();
-        why=`"…${snip}…"`;
-      }
-    }
-    return {...p,why};
-  });
+  // The Search tab is a conversation: you ask for places, DeepSeek interprets
+  // and runs the live search, and ranked results appear inline as cards.
+  const [msgs,setMsgs]=useState([{role:'anchor',text:"Hi — I'm Anchor. Tell me what you're after in Tokyo and I'll find it. Try “quiet coffee near Shibuya” or “a standing sushi counter.”"}]);
+  const [input,setInput]=useState('');
+  const [busy,setBusy]=useState(false);
+  const scrollRef=React.useRef(null);
+  const allAnchors=trip.anchors||[];
+  const distAnchor=allAnchors[0]||null; // measure result distance from the primary anchor
+  useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[msgs,busy]);
+  const send=async(preset)=>{
+    const text=(preset||input).trim(); if(!text||busy) return;
+    const history=[...msgs,{role:'user',text}].slice(-12).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+    setMsgs(m=>[...m,{role:'user',text}]); setInput(''); setBusy(true);
+    const res=await API.searchChat(history,(trip&&trip.taste)||{likes:[],dislikes:[]},(trip&&trip.prefs)||[],'');
+    setBusy(false);
+    setMsgs(m=>[...m,{role:'anchor',text:res.reply||(res.places&&res.places.length?'Here’s what I found:':'Hmm, I couldn’t find that — try rephrasing.'),places:res.places||[]}]);
+  };
+  const quick=['Quiet specialty coffee','Standing sushi counter','Natural wine bar','Vintage shops in Shimokitazawa'];
   return (
-    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
-      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#9092AD'}}>{mode==='saved'?'Search saved':'Search Tokyo · live'}</div>
-          <div style={{display:'inline-flex',background:'#ECEDF6',borderRadius:999,padding:3}}>
-            {[['saved','Saved'],['live','Tokyo']].map(([k,l])=>(
-              <button key={k} onClick={()=>setMode(k)} style={mode===k?segOn:segBase}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{position:'relative'}}>
-          <svg style={{position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}
-            width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9092AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder={mode==='saved'?'Place, neighborhood, dish, note…':'Ramen, coffee, izakaya, a place name…'}
-            style={{width:'100%',border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 40px 12px 42px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
-          {q&&<button onClick={()=>setQ('')} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',border:'none',background:'none',color:'#9092AD',fontSize:20,lineHeight:1,padding:2}}>×</button>}
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:'#FAFAFD'}}>
+      <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',gap:12}}>
+        <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#5BD6B0,#6C5CE7)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><SparkleIco size={20} color="#fff"/></div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Search Tokyo</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>Chat to find places — ranked to your taste</div>
         </div>
       </div>
-      <div style={{flex:1,overflowY:'auto'}}>
-        {/* ── LIVE GOOGLE MODE ── */}
-        {mode==='live'&&(
-          <div style={{padding:'12px 18px 24px'}}>
-            {q.trim().length<2&&(
-              <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search live Tokyo venues — Anchor ranks them to your taste and tells you why each fits.</div>
-              </div>
-            )}
-            {q.trim().length>=2&&live.loading&&(
-              <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>Finding &amp; ranking "{q.trim()}" for you…</div>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#B6B8CC',marginTop:6}}>Pulling live results — this can take a few seconds.</div>
-              </div>
-            )}
-            {q.trim().length>=2&&!live.loading&&live.error&&(
-              <div style={{padding:'24px',textAlign:'center',background:'#FFF1EA',borderRadius:16}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#8a4a2c',lineHeight:1.5}}>{live.error}</div>
-              </div>
-            )}
-            {q.trim().length>=2&&!live.loading&&!live.error&&live.places.length===0&&live.for===q.trim()&&(
-              <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No Tokyo results for "{q.trim()}"</div>
-              </div>
-            )}
-            {!live.loading&&!live.error&&liveVisible.length>0&&(
-              <>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:6}}>
-                  <span>{liveVisible.length} results ranked for you</span>
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:11,background:'#F1EEFF',borderRadius:12,padding:'9px 12px'}}>
-                  <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#5A48D6',lineHeight:1.4}}>Swipe <b>right</b> → scratchpad · <b>far right</b> → anchor · <b>left</b> → skip · 👎 to teach Anchor</span>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                  {liveVisible.map(({p,key})=>(
-                    <div key={key}>
-                      <SwipeCard
-                        labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
-                        onSwipeRight={()=>{onStash&&onStash(p,'idea'); setHidden(h=>({...h,[key]:1}));}}
-                        onSwipeRightFar={()=>{onStash&&onStash(p,'anchored'); setHidden(h=>({...h,[key]:1}));}}
-                        onSwipeLeft={()=>setHidden(h=>({...h,[key]:1}))}
-                        onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
-                        <div style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
-                          <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                            <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" style={{width:46,height:46,borderRadius:12,flexShrink:0}}/>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
-                                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
-                                <BudgetBadge budget={p.budget}/>
-                              </div>
-                              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
-                                {p.openNow&&<StatusPill openNow={p.openNow} small/>}
-                                {p.rating!=null&&<span style={{display:'inline-flex',alignItems:'center',gap:3}}><StarIco size={13}/><span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756'}}>{p.rating}</span>{p.reviews!=null&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>({p.reviews})</span>}</span>}
-                                {p.category&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{p.category}</span>}
-                              </div>
-                            </div>
+      <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'16px 14px 8px',display:'flex',flexDirection:'column',gap:13}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:'flex',flexDirection:'column',gap:9,width:'100%'}}>
+            <div style={{alignSelf:m.role==='user'?'flex-end':'flex-start',maxWidth:'88%',background:m.role==='user'?'linear-gradient(135deg,#8B72FB,#6C5CE7)':'#fff',color:m.role==='user'?'#fff':'#16172A',borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px',padding:'11px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,lineHeight:1.45,boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>{m.text}</div>
+            {m.places&&m.places.length>0&&(
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {m.places.map((p,j)=>(
+                  <SwipeCard key={(p.googleUrl||p.name||'r')+j} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
+                    onSwipeRight={()=>onStash&&onStash(p,'idea')} onSwipeRightFar={()=>onStash&&onStash(p,'anchored')}
+                    onSwipeLeft={()=>{}} onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
+                    <div style={{background:'#fff',borderRadius:18,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+                      <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+                        <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={22} style={{width:46,height:46,borderRadius:12,flexShrink:0}}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
+                            <BudgetBadge budget={p.budget}/>
                           </div>
-                          {p.reason&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.reason}</div></div>}
-                          <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                            <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/>
-                            <button onClick={e=>{e.stopPropagation();setRejWhy('');setRejKey(rejKey===key?null:key);}} aria-label="Not for me" title="Tell Anchor why"
-                              style={{flexShrink:0,width:34,height:34,borderRadius:10,border:'1.5px solid '+(rejKey===key?'#D8553C':'#F0D9D9'),background:rejKey===key?'#FDEEE9':'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
+                          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,flexWrap:'wrap'}}>
+                            {p.openNow&&<StatusPill openNow={p.openNow} small/>}
+                            {p.rating!=null&&<span style={{display:'inline-flex',alignItems:'center',gap:3}}><StarIco size={13}/><span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#353756'}}>{p.rating}</span>{p.reviews!=null&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>({p.reviews})</span>}</span>}
+                            {p.category&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD'}}>{p.category}</span>}
                           </div>
+                          {distAnchor&&<div style={{marginTop:6}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
                         </div>
-                      </SwipeCard>
-                      {rejKey===key&&(
-                        <div style={{margin:'8px 4px 2px',background:'#fff',border:'1.5px solid #F0D9D9',borderRadius:14,padding:'12px 13px'}}>
-                          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,color:'#9A3B2A',marginBottom:8}}>What's off about {p.name}?</div>
-                          <input value={rejWhy} onChange={e=>setRejWhy(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')doReject(p,key);}} placeholder="e.g. too touristy, too pricey, not my vibe…"
-                            style={{width:'100%',border:'1.5px solid #E3E5F0',borderRadius:11,padding:'10px 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#16172A',outline:'none'}}/>
-                          <div style={{display:'flex',gap:8,marginTop:9}}>
-                            <button onClick={()=>doReject(p,key)} style={{flex:1,border:'none',borderRadius:11,background:'#D8553C',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,padding:'10px',cursor:'pointer'}}>Teach Anchor &amp; hide</button>
-                            <button onClick={()=>{setRejKey(null);setRejWhy('');}} style={{border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:11,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,padding:'10px 14px',cursor:'pointer'}}>Cancel</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            {!live.loading&&!live.error&&live.places.length>0&&liveVisible.length===0&&(
-              <div style={{padding:'30px 6px',textAlign:'center'}}>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>All sorted — search again to find more.</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── SAVED MODE ── */}
-        {mode==='saved'&&q.length<2&&(
-          <div style={{padding:'40px 24px',textAlign:'center'}}>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',lineHeight:1.6}}>Search by name, neighborhood, category, or what a place is known for.</div>
-          </div>
-        )}
-        {mode==='saved'&&q.length>=2&&results.length===0&&(
-          <div style={{padding:'40px 24px',textAlign:'center'}}>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD'}}>No saved places match "{q}"</div>
-          </div>
-        )}
-        {mode==='saved'&&results.length>0&&(
-          <div style={{padding:'10px 18px 24px'}}>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:10}}>{results.length} {results.length===1?'match':'matches'}</div>
-            <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {results.map(p=>(
-                <div key={p.id} onClick={()=>push({type:'place',id:p.id})} style={{background:'#fff',borderRadius:20,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
-                  <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                    <Photo name={p.name} area={p.area} grad={p.catGrad} emoji={placeEmoji(p)} emojiSize={22} style={{width:44,height:44,borderRadius:12,flexShrink:0}}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',lineHeight:1.1}}>{p.name}</div>
-                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area} · {p.catLabel}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
-                        <StatusPill openNow={p.openNow} small/>
-                        <Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>
-                        <BudgetBadge budget={p.budget}/>
                       </div>
+                      {p.reason&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.reason}</div></div>}
+                      <div style={{marginTop:9}}><SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/></div>
                     </div>
-                  </div>
-                  {p.why&&(
-                    <div style={{marginTop:10,display:'flex',gap:8,alignItems:'flex-start',background:'#F4F5FA',borderRadius:10,padding:'8px 11px'}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:1}}>
-                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                      </svg>
-                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                  </SwipeCard>
+                ))}
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center',marginTop:1}}>Swipe a card right → scratchpad · far right → anchor</div>
+              </div>
+            )}
           </div>
-        )}
+        ))}
+        {busy&&<div style={{alignSelf:'flex-start',background:'#fff',borderRadius:'16px 16px 16px 4px',padding:'11px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>Searching Tokyo…</div>}
+      </div>
+      {msgs.length<=1&&(
+        <div style={{flexShrink:0,display:'flex',gap:8,overflowX:'auto',padding:'4px 16px 10px'}}>
+          {quick.map(qq=>(
+            <button key={qq} onClick={()=>send(qq)} style={{flexShrink:0,whiteSpace:'nowrap',border:'1px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,cursor:'pointer'}}>{qq}</button>
+          ))}
+        </div>
+      )}
+      <div style={{flexShrink:0,display:'flex',gap:9,padding:'10px 14px calc(12px + env(safe-area-inset-bottom))',borderTop:'1px solid #ECEDF6',background:'#FAFAFD'}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')send();}}
+          placeholder="Ask for any kind of place in Tokyo…" style={{flex:1,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#16172A',outline:'none'}}/>
+        <button onClick={()=>send()} disabled={!input.trim()||busy} style={{flexShrink:0,border:'none',borderRadius:14,background:!input.trim()||busy?'#C9C2F0':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontWeight:600,fontSize:15,padding:'0 18px',cursor:!input.trim()||busy?'default':'pointer'}}>Send</button>
       </div>
     </div>
   );
