@@ -9,6 +9,7 @@
 // (no ratings/links) — it should feel like a friend, not a directory. Fails soft.
 
 import { json, preflight, requireMethod, extractJson } from './_lib.js';
+import { lookupPlace } from './_search.js';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -38,6 +39,7 @@ export async function onRequest(context) {
   const hotelArea = (ctx.hotelArea || '').toString().trim();
   const hotelName = (ctx.hotelName || '').toString().trim();
   const arrivalDate = (ctx.arrivalDate || '').toString().trim();
+  const hotelCoords = (ctx.hotelCoords || '').toString().trim();
   const nights = ctx.nights || 0;
   const haveStay = Boolean(hotelArea || hotelName);
   const haveDates = Boolean(arrivalDate && nights);
@@ -103,6 +105,29 @@ Output ONLY a JSON object, no prose:
   if (typeof u.arrivalDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(u.arrivalDate)) updates.arrivalDate = u.arrivalDate;
   if (Number.isFinite(u.nights)) updates.nights = Math.max(1, Math.min(60, Math.round(u.nights)));
   if (Array.isArray(u.prefs)) { const p = clean(u.prefs); if (p.length) updates.prefs = p; }
+
+  // Enrich recommendations with live Google data: coords (→ distance to hotel),
+  // rating, reviews, price, open-now, canonical name + maps link.
+  if (env.GOOGLE_PLACES_API_KEY && places.length) {
+    await Promise.all(places.map(async p => {
+      const info = await lookupPlace(env, p.name, p.area);
+      if (info) {
+        if (info.name) p.name = info.name;
+        p.rating = info.rating; p.reviews = info.reviews; p.budget = info.budget;
+        p.category = info.category; p.coords = info.coords; p.googleUrl = info.googleUrl;
+        p.address = info.address; p.openNow = info.openNow;
+      }
+    }));
+  }
+
+  // Make sure the hotel anchor has coordinates so distance-to-hotel works —
+  // geocode when the hotel was just set, or the client still has no coords.
+  const hName = updates.hotelName || hotelName;
+  const hArea = updates.hotelArea || hotelArea;
+  if (env.GOOGLE_PLACES_API_KEY && (hName || hArea) && (updates.hotelName || updates.hotelArea || !hotelCoords)) {
+    const hi = await lookupPlace(env, hName || hArea, hArea);
+    if (hi && hi.coords) updates.hotelCoords = hi.coords;
+  }
 
   const chips = Array.isArray(parsed.chips) ? parsed.chips.filter(c => typeof c === 'string' && c.trim()).map(c => c.slice(0, 40)).slice(0, 3) : [];
 

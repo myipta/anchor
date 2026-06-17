@@ -104,6 +104,41 @@ async function googleText(env, query, area, limit) {
   return { places };
 }
 
+// ── Look up ONE named place for live data (coords→distance, rating, price). ──
+// Used by the concierge to enrich Claude's recommendations and to geocode the
+// hotel. Returns enriched fields or null; fails soft.
+export async function lookupPlace(env, name, area) {
+  if (!env.GOOGLE_PLACES_API_KEY || !name) return null;
+  const textQuery = `${name}${area ? ', ' + area : ''}, Tokyo`;
+  const fieldMask = ['places.displayName','places.formattedAddress','places.rating','places.userRatingCount',
+    'places.location','places.currentOpeningHours.openNow','places.priceLevel','places.primaryTypeDisplayName',
+    'places.googleMapsUri'].join(',');
+  let r;
+  try {
+    r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': fieldMask },
+      body: JSON.stringify({ textQuery, maxResultCount: 1, languageCode: 'en', regionCode: 'JP' }),
+    });
+  } catch { return null; }
+  if (!r.ok) return null;
+  let d; try { d = await r.json(); } catch { return null; }
+  const p = (d.places || [])[0];
+  if (!p) return null;
+  const openNow = p.currentOpeningHours?.openNow;
+  return {
+    name: p.displayName?.text || null,
+    rating: p.rating ?? null,
+    reviews: p.userRatingCount ?? null,
+    budget: PRICE[p.priceLevel] || null,
+    category: p.primaryTypeDisplayName?.text || null,
+    coords: p.location ? `${p.location.latitude}, ${p.location.longitude}` : null,
+    googleUrl: p.googleMapsUri || null,
+    address: p.formattedAddress || null,
+    openNow: openNow === true ? 'open' : openNow === false ? 'closed' : null,
+  };
+}
+
 // ── DeepSeek: rank the raw list to the traveler's taste, drop dislikes, add reasons ──
 async function rankToTaste(env, query, taste, prefs, places) {
   const likes = (Array.isArray(taste.likes) ? taste.likes : []).join(', ') || '(none)';

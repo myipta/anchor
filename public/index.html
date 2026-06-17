@@ -2024,7 +2024,7 @@ function GoogleResultCard({p}){
 }
 
 /* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
-function SearchScreen({push,onStash,trip,onLearn,onSetup}) {
+function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
   // The Search tab IS the app's home + setup: a conversation with a knowledgeable
   // Tokyo local (Claude) that recommends real places, learns your taste, AND
   // gathers your trip setup (hotel/dates/interests) — no separate onboarding form.
@@ -2037,33 +2037,37 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup}) {
     : (hotelArea
       ? `Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`
       : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love.");
-  const [msgs,setMsgs]=useState([{role:'anchor',text:greet}]);
+  // Conversation is owned by App (survives tab switch + reload); seed the
+  // greeting once if there's nothing stored yet.
+  const msgs=(convo&&convo.length)?convo:[{role:'anchor',text:greet}];
+  const setMsgs=setConvo;
+  useEffect(()=>{ if(!convo) setConvo([{role:'anchor',text:greet}]); },[]); // eslint-disable-line
   const [input,setInput]=useState('');
   const [busy,setBusy]=useState(false);
-  const [saved,setSaved]=useState({});
+  const [skipped,setSkipped]=useState({});
   const scrollRef=React.useRef(null);
-  useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[msgs,busy]);
+  const distAnchor=(anchor0&&anchor0.coords)?anchor0:null; // hotel, for distance pill
+  useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[convo,busy]);
 
   const context=()=>({
     taste:trip.taste||{likes:[],dislikes:[]},
     prefs:trip.prefs||[],
-    hotelArea, hotelName, arrivalDate:trip.arrivalDate, nights:trip.nights,
+    hotelArea, hotelName, hotelCoords:(anchor0&&anchor0.coords)||'', arrivalDate:trip.arrivalDate, nights:trip.nights,
     saved:[...(trip.scratchpad||[]).map(s=>s.name).filter(Boolean),
       ...((trip.anchoredPlaces||[]).map(id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)).filter(Boolean))].slice(0,20),
   });
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
     const hist=[...msgs,{role:'user',text}].slice(-16).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-    setMsgs(m=>[...m,{role:'user',text}]); setInput(''); setBusy(true);
+    setMsgs(m=>[...(m||[]),{role:'user',text}]); setInput(''); setBusy(true);
     const res=await API.concierge(hist,context());
     setBusy(false);
     if(onLearn&&res.learned&&((res.learned.likes&&res.learned.likes.length)||(res.learned.dislikes&&res.learned.dislikes.length)))
       onLearn(res.learned.likes||[],res.learned.dislikes||[]);
     if(onSetup&&res.updates&&Object.keys(res.updates).length) onSetup(res.updates);
-    setMsgs(m=>[...m,{role:'anchor',text:res.reply||'Tell me a bit more?',places:res.places||[],chips:res.chips||[],learned:res.learned||null,updates:res.updates||null}]);
+    setMsgs(m=>[...(m||[]),{role:'anchor',text:res.reply||'Tell me a bit more?',places:res.places||[],chips:res.chips||[],learned:res.learned||null,updates:res.updates||null}]);
   };
-  const savePlace=(p,key)=>{ onStash&&onStash(p,'idea'); setSaved(s=>({...s,[key]:true})); };
-  const mapsUrl=p=>'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(`${p.name} ${p.area||''} Tokyo`);
+  const skip=key=>setSkipped(s=>({...s,[key]:true}));
   const lastIdx=msgs.length-1;
 
   return (
@@ -2091,24 +2095,34 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup}) {
               </div>
             ):null}
 
-            {m.places&&m.places.length>0&&(
-              <div style={{display:'flex',flexDirection:'column',gap:9}}>
-                {m.places.map((p,j)=>{const key=i+'-'+j;return(
-                  <div key={key} style={{background:'#fff',borderRadius:16,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)'}}>
-                    <div style={{display:'flex',gap:11,alignItems:'flex-start'}}>
-                      <div style={{width:38,height:38,borderRadius:11,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📍</div>
+            {m.places&&m.places.some((p,j)=>!skipped[i+'-'+j])&&(
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {m.places.map((p,j)=>{const key=i+'-'+j; if(skipped[key]) return null; return(
+                  <SwipeCard key={key} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
+                    onSwipeRight={()=>onStash&&onStash(p,'idea')} onSwipeRightFar={()=>onStash&&onStash(p,'anchored')}
+                    onSwipeLeft={()=>skip(key)} onTap={()=>p.googleUrl&&window.open(p.googleUrl,'_blank','noopener')}>
+                  <div style={{background:'#fff',borderRadius:18,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+                    <div style={{display:'flex',gap:12}}>
+                      <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={28} style={{width:64,height:64,borderRadius:13,flexShrink:0}}/>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.2}}>{p.name}</div>
-                        {p.area&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:1}}>{p.area}</div>}
-                        {p.why&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#4836B4',lineHeight:1.4,marginTop:6}}>{p.why}</div>}
+                        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:6}}>
+                          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
+                          <BudgetBadge budget={p.budget}/>
+                        </div>
+                        {(p.area||p.category)&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area||'Tokyo'}{p.category?` · ${p.category}`:''}</div>}
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
+                          {p.rating!=null&&<Ratings rating={p.rating}/>}
+                          <StatusPill openNow={p.openNow} small/>
+                        </div>
                       </div>
                     </div>
-                    <div style={{display:'flex',gap:8,marginTop:11}}>
-                      <button onClick={()=>savePlace(p,key)} disabled={saved[key]} style={{flex:1,border:'none',borderRadius:11,padding:'9px 0',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,cursor:saved[key]?'default':'pointer',background:saved[key]?'#EAF7F1':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:saved[key]?'#0E865B':'#fff'}}>{saved[key]?'✓ Saved':'+ Save'}</button>
-                      <a href={mapsUrl(p)} target="_blank" rel="noopener" style={{flex:1,textAlign:'center',textDecoration:'none',border:'1.5px solid #E3E5F0',borderRadius:11,padding:'9px 0',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13.5,color:'#6C6E8E'}}>Map ↗</a>
-                    </div>
+                    {distAnchor&&<div style={{marginTop:9}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
+                    {p.why&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div></div>}
+                    <div style={{marginTop:9}}><SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/></div>
                   </div>
+                  </SwipeCard>
                 );})}
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center'}}>Swipe right → save · far right → anchor · left → skip</div>
               </div>
             )}
 
@@ -2701,6 +2715,10 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveState(t);setTrip(t);onCloudSync&&onCloudSync(t);};
   // Persist a freshly bootstrapped blank trip so a reload keeps it.
   useEffect(()=>{ if(!loadState()&&trip) saveState(trip); },[]); // eslint-disable-line
+  // Concierge conversation lives in App (survives tab switches) + localStorage
+  // (survives reload), so it isn't lost when the Search tab unmounts.
+  const [convo,setConvo]=useState(()=>{try{const c=JSON.parse(localStorage.getItem('anchor_chat')||'null');return Array.isArray(c)&&c.length?c:null;}catch{return null;}});
+  const updateConvo=React.useCallback(next=>{ setConvo(prev=>{ const v=typeof next==='function'?next(prev):next; try{localStorage.setItem('anchor_chat',JSON.stringify((v||[]).slice(-40)));}catch{} return v; }); },[]);
   // Apply trip setup the concierge gathered through conversation (no setup form).
   const onSetup=updates=>{
     if(!updates||typeof updates!=='object'||!Object.keys(updates).length) return;
@@ -2709,12 +2727,13 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     if(updates.nights) t.nights=updates.nights;
     if(t.arrivalDate&&t.nights) t.departureDate=addDays(t.arrivalDate,t.nights);
     if(Array.isArray(updates.prefs)&&updates.prefs.length) t.prefs=[...new Set([...(t.prefs||[]),...updates.prefs])];
-    if(updates.hotelName||updates.hotelArea){
+    if(updates.hotelName||updates.hotelArea||updates.hotelCoords){
       const anchors=[...(t.anchors||[])];
       const name=updates.hotelName||(anchors[0]&&anchors[0].name)||'My stay';
       const area=updates.hotelArea||(anchors[0]&&anchors[0].area)||'Tokyo';
-      if(anchors[0]) anchors[0]={...anchors[0],name,area};
-      else anchors.unshift({id:'anc-0',name,area,checkin:t.arrivalDate||todayStr(),checkout:t.departureDate||''});
+      const coords=updates.hotelCoords||(anchors[0]&&anchors[0].coords)||null;
+      if(anchors[0]) anchors[0]={...anchors[0],name,area,...(coords?{coords}:{})};
+      else anchors.unshift({id:'anc-0',name,area,...(coords?{coords}:{}),checkin:t.arrivalDate||todayStr(),checkout:t.departureDate||''});
       t.anchors=anchors;
     }
     persist(t);
@@ -2835,7 +2854,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup} convo={convo} setConvo={updateConvo}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
