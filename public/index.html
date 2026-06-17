@@ -1356,8 +1356,9 @@ function sourceUrls(name,area,googleUrl,tabelogUrl){
     google:googleUrl||`https://www.google.com/maps/search/?api=1&query=${q}`,
     yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' Tokyo').trim())}`,
     // Prefer the restaurant's real Tabelog page (opens the installed app via
-    // universal links); fall back to a search only when we don't have it.
-    tabelog:tabelogUrl||`https://tabelog.com/en/rst/rstsearch/?sw=${encodeURIComponent(name)}`,
+    // universal links). Without it, fall back to a JP search (avoids the English
+    // language-modal homepage).
+    tabelog:tabelogUrl||`https://tabelog.com/rstLst/?sw=${encodeURIComponent(name)}`,
   };
 }
 function SourceLinks({name,area,googleUrl,tabelogUrl,label=true}){
