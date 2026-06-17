@@ -17,7 +17,9 @@ export async function onRequest(context) {
       deepseek: Boolean(env.DEEPSEEK_API_KEY),
       googlePlaces: Boolean(env.GOOGLE_PLACES_API_KEY),
       anthropic: Boolean(env.ANTHROPIC_API_KEY),
+      apify: Boolean(env.APIFY_TOKEN),
     },
+    tabelogActor: env.APIFY_TABELOG_ACTOR || 'parseforge~tabelog-scraper',
     // Cloud accounts/sync require BOTH a bound D1 database and an email sender.
     // If db:false, the app is in offline/local mode and shows no login.
     cloud: {
