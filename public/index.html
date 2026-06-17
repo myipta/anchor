@@ -1350,6 +1350,19 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
 
 /* ── DISCOVER ── */
 /* ── SOURCE LINKS ── */
+// Tabelog Store ID = trailing number in a restaurant URL (…/A130103/13292459/).
+function tabelogStoreId(url){ const m=String(url||'').match(/\/(\d{5,})\/?(?:[?#]|$)/); return m?m[1]:null; }
+// Open the Tabelog app via its scheme (tabelog://rstdtl/{id}); if it doesn't take
+// over (app not installed), fall back to the web page after a short delay.
+function openTabelog(tabelogUrl,webFallback){
+  const id=tabelogStoreId(tabelogUrl);
+  const web=tabelogUrl||webFallback;
+  if(!id){ if(web) window.open(web,'_blank','noopener'); return; }
+  let left=false; const onHide=()=>{left=true;};
+  document.addEventListener('visibilitychange',onHide,{once:true});
+  try{ window.location.href='tabelog://rstdtl/'+id; }catch{}
+  setTimeout(()=>{ document.removeEventListener('visibilitychange',onHide); if(!left&&web) window.open(web,'_blank','noopener'); },800);
+}
 function sourceUrls(name,area,googleUrl,tabelogUrl){
   const q=encodeURIComponent(`${name} ${area||''} Tokyo`.trim());
   return {
@@ -1363,22 +1376,22 @@ function sourceUrls(name,area,googleUrl,tabelogUrl){
 }
 function SourceLinks({name,area,googleUrl,tabelogUrl,label=true}){
   const u=sourceUrls(name,area,googleUrl,tabelogUrl);
+  const tbId=tabelogStoreId(tabelogUrl);
   const items=[
     {k:'Google',href:u.google,color:'#4285F4'},
     {k:'Yelp',href:u.yelp,color:'#D32323'},
-    {k:'Tabelog',href:u.tabelog,color:'#C9A24B',jp:'食'},
+    {k:'Tabelog',href:u.tabelog,color:'#C9A24B',jp:'食',onClick:tbId?(e=>{e.stopPropagation();e.preventDefault();openTabelog(tabelogUrl,u.tabelog);}):null},
   ];
+  const linkStyle={display:'inline-flex',alignItems:'center',gap:6,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:999,padding:'7px 12px',textDecoration:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,color:'#4E5072',cursor:'pointer'};
+  const inner=it=>(<><span style={{width:8,height:8,borderRadius:'50%',background:it.color,flexShrink:0}}/>{it.jp?it.jp+' ':''}{it.k}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg></>);
   return(
     <div>
       {label&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'#9092AD',marginBottom:7}}>Read reviews</div>}
       <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-        {items.map(it=>(
-          <a key={it.k} href={it.href} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
-            style={{display:'inline-flex',alignItems:'center',gap:6,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:999,padding:'7px 12px',textDecoration:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,color:'#4E5072'}}>
-            <span style={{width:8,height:8,borderRadius:'50%',background:it.color,flexShrink:0}}/>{it.jp?it.jp+' ':''}{it.k}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
-          </a>
-        ))}
+        {items.map(it=> it.onClick
+          ? <button key={it.k} onClick={it.onClick} style={{...linkStyle,border:'1.5px solid #EBD9A8',background:'#FFFBF0'}}>{inner(it)}</button>
+          : <a key={it.k} href={it.href} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={linkStyle}>{inner(it)}</a>
+        )}
       </div>
     </div>
   );
@@ -2197,7 +2210,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,convo,setConv
                   return(
                   <SwipeCard key={j} labels={{near:'Scratchpad',far:'Anchor',left:'Skip ✕'}}
                     onSwipeRight={()=>actCard(m.id,j,p,'save')} onSwipeRightFar={()=>actCard(m.id,j,p,'anchor')}
-                    onSwipeLeft={()=>actCard(m.id,j,p,'skip')} onTap={()=>{const u=p.tabelogUrl||p.googleUrl; if(u)window.open(u,'_blank','noopener');}}>
+                    onSwipeLeft={()=>actCard(m.id,j,p,'skip')} onTap={()=>{ if(p.tabelogUrl){openTabelog(p.tabelogUrl,p.tabelogUrl);} else if(p.googleUrl){window.open(p.googleUrl,'_blank','noopener');} }}>
                   <div style={{background:'#fff',borderRadius:18,padding:12,boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
                     <div style={{display:'flex',gap:12}}>
                       <Photo name={p.name} area={p.area} grad="linear-gradient(135deg,#5BD6B0,#8B72FB)" emoji={placeEmoji(p)} emojiSize={28} style={{width:64,height:64,borderRadius:13,flexShrink:0}}/>
