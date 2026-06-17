@@ -1544,7 +1544,7 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
         </div>
         {!real&&reasonFor(p)&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#5A48D6',lineHeight:1.45,marginTop:9,fontStyle:'italic'}}>{reasonFor(p)}</div>}
         <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-          <SourceLinks name={p.name} area={p.area} googleUrl={real?p.googleUrl:undefined} label={false}/>
+          <SourceLinks name={p.name} area={p.area} googleUrl={real?p.googleUrl:undefined} tabelogUrl={real?p.tabelogUrl:undefined} label={false}/>
           <div style={{display:'flex',gap:7,flexShrink:0}}>
             <button onClick={e=>{e.stopPropagation();onLike&&onLike(likeTag);}} aria-label="Like" title="More like this"
               style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
@@ -1597,14 +1597,12 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
           {dislikeTags.slice(0,2).map(t=><span key={'d'+t} style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9A3B2A',background:'#FDE2D8',borderRadius:999,padding:'2px 9px'}}><ThumbIco up={false} size={11} color="#9A3B2A"/> {t}</span>)}
         </div>
       )}
-      {showOptimize&&(
-        <div style={{padding:'12px 18px 0'}}>
-          <button onClick={()=>onOptimize&&onOptimize()} disabled={optimizing} style={{width:'100%',border:'none',borderRadius:16,background:optimizing?'#C9C2F0':'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:'#fff',fontWeight:700,fontSize:15.5,padding:'14px',cursor:optimizing?'default':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:optimizing?'none':'0 6px 18px rgba(248,87,166,0.32)'}}>
-            <SparkleIco size={18} color="#fff"/> {optimizing?'Finding spots you’ll love…':'Optimize my search'}
-          </button>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',textAlign:'center',marginTop:7}}>Pulls fresh Tokyo places from your {likeTags.length===0?'prefs':'liked tags'}</div>
-        </div>
-      )}
+      <div style={{padding:'12px 18px 0'}}>
+        <button onClick={()=>onOptimize&&onOptimize()} disabled={optimizing} style={{width:'100%',border:'none',borderRadius:16,background:optimizing?'#C9C2F0':'linear-gradient(135deg,#FF9E5E 0%,#F857A6 52%,#8B5CF6 100%)',color:'#fff',fontWeight:700,fontSize:15.5,padding:'14px',cursor:optimizing?'default':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:optimizing?'none':'0 6px 18px rgba(248,87,166,0.32)'}}>
+          <SparkleIco size={18} color="#fff"/> {optimizing?'Finding spots you’ll love…':'Recommend now'}
+        </button>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',textAlign:'center',marginTop:7}}>Pulls real Tokyo places from your {likeTags.length===0?'prefs':'liked tags'} (Tabelog →​ Google)</div>
+      </div>
       <div style={{display:'flex',gap:8,overflowX:'auto',padding:'10px 18px 6px'}}>
         {chips.map(c=>(
           <span key={c} style={{flexShrink:0,display:'inline-flex',alignItems:'center',gap:6,background:'#fff',border:'1px solid #E3E5F0',borderRadius:999,padding:'8px 13px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:500,color:'#4E5072',whiteSpace:'nowrap'}}>
@@ -2830,7 +2828,16 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const discSkip=p=>persist(bumpT({...trip,dismissedPlaces:[...(trip.dismissedPlaces||[]),p.id]}));
   const resetDismissed=()=>persist({...trip,dismissedPlaces:[]});
   // Discover "train Anchor": learned taste tags drive ranking/filtering.
-  const mergeTags=(arr,add)=>[...new Set([...(arr||[]),...add.map(s=>String(s).toLowerCase().trim()).filter(Boolean)])].slice(0,40);
+  // Canonicalize + de-duplicate taste tags. Drops near-dupes by containment
+  // ("late night dining past midnight" collapses into "late night"), prefers the
+  // shorter/more-generic form, and caps the list so it can't snowball.
+  const canonTag=s=>String(s||'').toLowerCase().replace(/[^\w\s/&+-]/g,'').replace(/\s+/g,' ').trim();
+  const mergeTags=(arr,add)=>{
+    const all=[...(arr||[]),...(add||[])].map(canonTag).filter(t=>t&&t.length>=2).sort((a,b)=>a.length-b.length);
+    const out=[];
+    for(const t of all){ if(!out.some(c=>c===t||c.includes(t)||t.includes(c))) out.push(t); }
+    return out.slice(0,18);
+  };
   const learnTaste=(addLikes,addDislikes)=>{
     const t=trip.taste||{likes:[],dislikes:[]};
     persist({...trip,taste:{likes:mergeTags(t.likes,addLikes||[]),dislikes:mergeTags(t.dislikes,addDislikes||[])}});
@@ -2839,6 +2846,11 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     const t=trip.taste||{likes:[],dislikes:[]};
     persist({...trip,taste:{...t,[kind]:(t[kind]||[]).filter(x=>x!==tag)}});
   };
+  // One-time cleanup: collapse any pre-existing duplicate/verbose taste tags.
+  useEffect(()=>{ const t=trip.taste; if(!t) return;
+    const likes=mergeTags([],t.likes||[]), dislikes=mergeTags([],t.dislikes||[]);
+    if(likes.length!==(t.likes||[]).length||dislikes.length!==(t.dislikes||[]).length) persist({...trip,taste:{likes,dislikes}});
+  },[]); // eslint-disable-line
   const likeCategory=tag=>{ if(tag) learnTaste([tag],[]); };
   // Search dislike: learn why a result is wrong (AI if available, local otherwise).
   const rejectSearch=async(place,why)=>{
@@ -2853,17 +2865,19 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const optimizeSearch=async()=>{
     if(optimizing) return 0;
     const taste=trip.taste||{likes:[],dislikes:[]};
-    let terms=(taste.likes||[]).slice(0,4);
+    let terms=(taste.likes||[]).slice(0,3);
     if(!terms.length) terms=(trip.prefs||[]).map(id=>{const o=PREF_OPTS.find(x=>x.id===id);return o?o.label:id;}).slice(0,3);
     if(!terms.length) terms=['popular restaurants'];
     setOptimizing(true);
+    const area=(trip.anchors&&trip.anchors[0]&&trip.anchors[0].area)||'';
     const seen=new Set([...(trip.discovered||[]).map(p=>p.id),...(trip.scratchpad||[]).map(s=>s.sourceId).filter(Boolean),...(trip.dismissedPlaces||[])]);
     const dislikes=taste.dislikes||[];
     const found=[];
     for(const term of terms){
-      const res=await API.places(term,'',5);
+      // Grounded: Tabelog (→ Google fallback) near the hotel, ranked to taste.
+      const res=await API.tabelog(term,area,taste,trip.prefs||[],[]);
       (res.places||[]).forEach(p=>{
-        const id='g:'+(p.googleUrl||p.name||'');
+        const id='g:'+(p.tabelogUrl||p.googleUrl||p.name||'');
         const h=((p.name||'')+' '+(p.category||'')).toLowerCase();
         if(seen.has(id)||found.some(x=>x.id===id)) return;
         if(dislikes.some(d=>d&&h.includes(d))) return;
