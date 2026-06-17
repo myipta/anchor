@@ -84,10 +84,14 @@ async function tabelogScrape({ query, area, limit }) {
 async function tabelogApify(env, { query, area, limit }) {
   const actor = (env.APIFY_TABELOG_ACTOR || 'parseforge~tabelog-scraper').replace('/', '~');
   const term = area ? `${query} ${area}` : query;
+  // Documented path: feed Tabelog URLs directly. A keyword-search URL forces the
+  // actor to honor the query (the keyword field alone was being ignored).
+  const searchUrl = `https://tabelog.com/en/rstLst/?sw=${encodeURIComponent(term)}`;
   const input = {
-    search: term, query: term, queries: [term], keyword: term, searchStringsArray: [term],
-    city: 'tokyo', language: 'en', maxItems: limit, maxResults: limit, limit,
-    startUrls: [{ url: `https://tabelog.com/en/rstLst/?sw=${encodeURIComponent(term)}` }],
+    startUrls: [{ url: searchUrl }, { url: searchUrl, method: 'GET' }],
+    urls: [searchUrl], startUrl: searchUrl, searchUrl, url: searchUrl,
+    keyword: term, search: term, query: term,
+    language: 'en', maxItems: limit, maxResults: limit, limit,
   };
   let r;
   try {
