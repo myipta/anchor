@@ -2185,6 +2185,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
                   </SwipeCard>
                 );})}
                 <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,color:'#B6B8CC',textAlign:'center'}}>Swipe right → save · far right → anchor · left → skip</div>
+                {m.source&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,color:'#9092AD',textAlign:'center'}}>{(m.source==='tabelog'||m.source==='tabelog-apify')?'食 Ranked on Tabelog':'Live from Google'}</div>}
                 {i===lastIdx&&!busy&&<button onClick={()=>send('Show me a few more options, different from those.')} style={{alignSelf:'center',marginTop:2,border:'1.5px solid #E3DCFF',background:'#F4F2FF',color:'#5A48D6',borderRadius:999,padding:'9px 18px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,fontWeight:600,cursor:'pointer'}}>Show more places ↓</button>}
               </div>
             )}
