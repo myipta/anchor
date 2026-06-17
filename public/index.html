@@ -2102,7 +2102,7 @@ function AnchorDetailOverlay({anchorId,pop,push,trip}){
 }
 
 /* ── TRIP OVERLAY ── */
-function TripOverlay({pop,push,trip,user,cloud,onLogout}){
+function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
   const today=todayStr();
   const days=Array.from({length:trip.nights||0},(_,i)=>({
     date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
@@ -2127,6 +2127,7 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout}){
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color: cloud&&user?'#0E865B':'#C0863A',marginTop:1}}>{cloud&&user?'✓ Synced to your account':'Saved on this device only'}</div>
           </div>
           {user&&onLogout&&<button onClick={onLogout} style={{flexShrink:0,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:11,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,padding:'8px 13px',cursor:'pointer'}}>Log out</button>}
+          {!user&&onSignIn&&<button onClick={onSignIn} style={{flexShrink:0,border:'none',borderRadius:11,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,padding:'8px 13px',cursor:'pointer'}}>Sign in to sync</button>}
         </div>
         {trip.anchors&&trip.anchors.length>0&&(
           <>
@@ -2580,7 +2581,7 @@ function BottomNav({tab,setTab}) {
 }
 
 /* ── APP ── */
-function App({initialTrip,user,cloud,onLogout,onCloudSync}){
+function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const [trip,setTrip]=useState(()=> initialTrip!==undefined ? initialTrip : loadState());
   const [editingTrip,setEditingTrip]=useState(false);
   const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form'
@@ -2616,7 +2617,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync}){
   },[]); // eslint-disable-line
 
   // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
-  const persist=nt=>{saveState(nt);setTrip(nt);onCloudSync&&onCloudSync(nt);};
+  const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveState(t);setTrip(t);onCloudSync&&onCloudSync(t);};
   const handleTripComplete=t=>{persist(t);setEditingTrip(false);setOnbPhase('chat');setFormInit(null);};
   const handleAnchorPlace=id=>{
     const ap=trip?.anchoredPlaces||[];
@@ -2739,7 +2740,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync}){
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
-        {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip} user={user} cloud={cloud} onLogout={onLogout}/>}
+        {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip} user={user} cloud={cloud} onLogout={onLogout} onSignIn={onSignIn}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
         {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}
@@ -2757,7 +2758,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync}){
 }
 
 /* ── AUTH: email-passcode sign in ── */
-function LoginScreen({onAuthed}){
+function LoginScreen({onAuthed,onSkip}){
   const [step,setStep]=useState('email'); // 'email' | 'code'
   const [email,setEmail]=useState('');
   const [code,setCode]=useState('');
@@ -2803,6 +2804,7 @@ function LoginScreen({onAuthed}){
             style={{width:'100%',marginTop:14,border:'none',borderRadius:13,background:busy?'#B6A9F2':'#6C5CE7',color:'#fff',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,padding:'14px',cursor:busy?'default':'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.28)'}}>
             {busy?'…':(step==='email'?'Send code':'Verify & sign in')}</button>
           {step==='code'&&<button onClick={()=>{setStep('email');setCode('');setErr('');setNote('');}} style={{width:'100%',marginTop:10,border:'none',background:'none',color:'#9092AD',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,cursor:'pointer'}}>← Use a different email</button>}
+          {step==='email'&&onSkip&&<button onClick={onSkip} style={{width:'100%',marginTop:12,border:'none',background:'none',color:'#9092AD',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,cursor:'pointer'}}>Continue without an account →</button>}
         </div>
       </div>
     </div>
@@ -2824,20 +2826,38 @@ function Root(){
   const [initialTrip,setInitialTrip]=useState(undefined);
   const syncTimer=React.useRef(null);
 
-  // Load the user's trip from the server, migrating a local trip up on first login.
+  // Sign-in trip resolution. NEVER destroy local data: keep whichever copy is
+  // newer by updatedAt, and on a tie or legacy/un-timestamped local, KEEP LOCAL
+  // (the device is the copy the user has been editing). Push the kept copy up so
+  // cloud converges. This makes an empty/stale cloud record harmless.
   const enterWithTrip=async(u)=>{
     const res=await API.tripGet();
     const local=loadState();
-    if(res&&res.trip){ saveState(res.trip); setInitialTrip(res.trip); }
-    else if(local){ API.tripPut(local); setInitialTrip(local); }   // migrate device → cloud
+    const cloud=(res&&res.trip&&typeof res.trip==='object')?res.trip:null;
+    const cloudT=cloud?(Number(res.updated_at)||Number(cloud.updatedAt)||0):0;
+    const localT=local?(Number(local.updatedAt)||0):0;
+    const useCloud=cloud&&cloudT>localT;             // local wins ties + legacy (localT=0)
+    const chosen=useCloud?cloud:(local||cloud||null);
+    if(chosen){ saveState(chosen); setInitialTrip(chosen); }
     else { setInitialTrip(null); }
+    if(chosen&&!useCloud) API.tripPut(chosen);        // converge cloud to the kept copy
     setUser(u); setCloud(true); setPhase('app');
   };
 
+  // Re-show login on demand (from Settings); escape hatch back to local data.
+  const onSignIn=()=>setPhase('login');
+  const onSkipLogin=()=>{ setInitialTrip(loadState()); setCloud(true); setPhase('app'); };
+
   useEffect(()=>{(async()=>{
     const r=await API.me();
-    if(!r.cloud){ setCloud(false); setInitialTrip(loadState()); setPhase('app'); return; } // offline fallback
-    if(r.user){ await enterWithTrip(r.user); } else { setCloud(true); setPhase('login'); }
+    const local=loadState();
+    if(!r.cloud){ setCloud(false); setInitialTrip(local); setPhase('app'); return; } // offline-only
+    if(r.user){ await enterWithTrip(r.user); return; }
+    // Cloud configured but nobody signed in. NEVER wall existing local data behind
+    // login — enter with it; sign-in stays available in Settings. Only a brand-new
+    // device (no local trip) sees the login screen.
+    if(local){ setCloud(true); setInitialTrip(local); setPhase('app'); }
+    else { setCloud(true); setPhase('login'); }
   })();},[]); // eslint-disable-line
 
   // Debounced cloud save (only when signed in).
@@ -2849,9 +2869,9 @@ function Root(){
   const onLogout=async()=>{ await API.logout(); setUser(null); setInitialTrip(undefined); setPhase('login'); };
 
   if(phase==='loading') return <Splash/>;
-  if(phase==='login') return <LoginScreen onAuthed={enterWithTrip}/>;
+  if(phase==='login') return <LoginScreen onAuthed={enterWithTrip} onSkip={onSkipLogin}/>;
   return <App key={user?user.email:'offline'} initialTrip={initialTrip} user={user} cloud={cloud}
-    onCloudSync={cloud&&user?onCloudSync:null} onLogout={cloud&&user?onLogout:null}/>;
+    onCloudSync={cloud&&user?onCloudSync:null} onLogout={cloud&&user?onLogout:null} onSignIn={cloud&&!user?onSignIn:null}/>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);

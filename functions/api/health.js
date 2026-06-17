@@ -18,6 +18,13 @@ export async function onRequest(context) {
       googlePlaces: Boolean(env.GOOGLE_PLACES_API_KEY),
       anthropic: Boolean(env.ANTHROPIC_API_KEY),
     },
+    // Cloud accounts/sync require BOTH a bound D1 database and an email sender.
+    // If db:false, the app is in offline/local mode and shows no login.
+    cloud: {
+      db: Boolean(env.DB),
+      email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
+      devAuth: env.DEV_AUTH === '1',
+    },
     suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
     chatModel: env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     time: new Date().toISOString(),
