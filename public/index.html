@@ -1477,7 +1477,19 @@ function DiscoverScreen({push,trip,onSave,onAnchor,onSkip,onResetDismiss,onLike,
   let visible=fullPool.filter(p=>!saved.has(p.id)&&!anchored.has(p.id)&&!dismissed.has(p.id));
   if(dislikeTags.length) visible=visible.filter(p=>!matchesAny(p,dislikeTags));
   const scoreOf=p=>(matchesAny(p,likeTags)?1000:0)+(ai&&ai[p.id]?ai[p.id].score:0);
-  const ordered=[...visible].sort((a,b)=>scoreOf(b)-scoreOf(a)).map(p=>({...p,__real:false}));
+  // Freeze the feed order once (after AI ranking lands, or a short fallback) so
+  // cards don't reshuffle under you while browsing. Re-freezes only when the
+  // prefs/taste that define the order actually change.
+  const orderKey=prefsKey+'|'+likeTags.join(',')+'|'+dislikeTags.join(',');
+  const [frozenOrder,setFrozenOrder]=useState(null);
+  useEffect(()=>{ setFrozenOrder(null); },[orderKey]);
+  useEffect(()=>{
+    if(frozenOrder) return;
+    const freeze=()=>setFrozenOrder([...fullPool].sort((a,b)=>scoreOf(b)-scoreOf(a)).map(p=>p.id));
+    if(ai!==null) freeze(); else { const t=setTimeout(freeze,1400); return ()=>clearTimeout(t); }
+  },[ai,frozenOrder,orderKey]); // eslint-disable-line
+  const rankOf=id=>{ if(!frozenOrder) return 0; const i=frozenOrder.indexOf(id); return i<0?9999:i; };
+  const ordered=[...visible].sort((a,b)=>rankOf(a.id)-rankOf(b.id)).map(p=>({...p,__real:false}));
   // Brand-new real places pulled from learned taste sit at the top of the feed.
   let found=(trip.discovered||[]).map(p=>({...p,__real:true})).filter(p=>!saved.has(p.id)&&!dismissed.has(p.id));
   if(dislikeTags.length) found=found.filter(p=>!matchesAny(p,dislikeTags));
@@ -2049,12 +2061,15 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
   const distAnchor=(anchor0&&anchor0.coords)?anchor0:null; // hotel, for distance pill
   useEffect(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; },[convo,busy]);
 
+  const curatedName=id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)||null;
   const context=()=>({
     taste:trip.taste||{likes:[],dislikes:[]},
     prefs:trip.prefs||[],
     hotelArea, hotelName, hotelCoords:(anchor0&&anchor0.coords)||'', arrivalDate:trip.arrivalDate, nights:trip.nights,
-    saved:[...(trip.scratchpad||[]).map(s=>s.name).filter(Boolean),
-      ...((trip.anchoredPlaces||[]).map(id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)).filter(Boolean))].slice(0,20),
+    // Places the user committed to (swiped to Anchor) are the strongest taste signal.
+    anchored:[...(trip.scratchpad||[]).filter(s=>s.status==='anchored').map(s=>s.name),
+      ...((trip.anchoredPlaces||[]).map(curatedName))].filter(Boolean).slice(0,25),
+    ideas:(trip.scratchpad||[]).filter(s=>s.status!=='anchored').map(s=>s.name).filter(Boolean).slice(0,25),
   });
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
@@ -2119,7 +2134,13 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,convo,setConvo}) {
                     </div>
                     {distAnchor&&<div style={{marginTop:9}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
                     {p.why&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div></div>}
-                    <div style={{marginTop:9}}><SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/></div>
+                    <div style={{marginTop:9,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                      <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} label={false}/>
+                      <div style={{display:'flex',gap:7,flexShrink:0}}>
+                        <button onClick={e=>{e.stopPropagation();send('More spots like '+p.name+', please.');}} aria-label="More like this" title="More like this" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
+                        <button onClick={e=>{e.stopPropagation();send('Not '+p.name+' — show me something different.');}} aria-label="Not for me" title="Not for me" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
+                      </div>
+                    </div>
                   </div>
                   </SwipeCard>
                 );})}

@@ -35,7 +35,8 @@ export async function onRequest(context) {
   const likes = (Array.isArray(taste.likes) ? taste.likes : []).join(', ') || '(none yet)';
   const dislikes = (Array.isArray(taste.dislikes) ? taste.dislikes : []).join(', ') || '(none yet)';
   const prefs = (Array.isArray(ctx.prefs) ? ctx.prefs : []).join(', ') || '(none)';
-  const saved = (Array.isArray(ctx.saved) ? ctx.saved : []).slice(0, 20).join(', ') || '(none yet)';
+  const anchored = (Array.isArray(ctx.anchored) ? ctx.anchored : []).slice(0, 25).join(', ') || '(none yet)';
+  const ideas = (Array.isArray(ctx.ideas) ? ctx.ideas : (Array.isArray(ctx.saved) ? ctx.saved : [])).slice(0, 25).join(', ') || '(none yet)';
   const hotelArea = (ctx.hotelArea || '').toString().trim();
   const hotelName = (ctx.hotelName || '').toString().trim();
   const arrivalDate = (ctx.arrivalDate || '').toString().trim();
@@ -58,13 +59,15 @@ What you know so far:
 - Loves: ${likes}
 - Avoids: ${dislikes}
 - Interests: ${prefs}
-- Already saved: ${saved}
+- ANCHORED places (they're building their trip around these — your strongest signal of taste): ${anchored}
+- Other saved ideas: ${ideas}
 
 How to respond:
 - Talk like a knowledgeable friend who lives in Tokyo: concise, specific, a little opinionated. No bullet lists, no star ratings, no "here are some options". PLAIN TEXT ONLY — no markdown, asterisks, or bold.
 - SETUP, naturally: if you don't yet know their stay or dates, work ONE friendly question into your reply (never interrogate, never ask for everything at once). As you learn trip facts, put them in "updates". Parse relative dates ("next month", "the 14th") against today.
 - RECOMMEND: when it fits, suggest 1-4 SPECIFIC, REAL Tokyo places you know, each with a one-line reason tied to THIS person's taste. Favor places near ${hotelArea || 'wherever they mention'}. If they ask for more, suggest DIFFERENT places you haven't mentioned yet. If the message is just chatting, recommend nothing.
-- LEARN: extract any new taste signals from their latest message.
+- LEARN from their saves: the anchored/saved places above are strong evidence of what they love — infer the pattern (cuisines, vibe, price, neighborhoods) and lean into it. NEVER re-recommend a place they've already anchored or saved.
+- LEARN from the chat: extract any new taste signals from their latest message.
 
 Output ONLY a JSON object, no prose:
 {"reply":"<your message>","places":[{"name":"<real place>","area":"<neighborhood>","why":"<one short clause for THEM>"}],"learned":{"likes":["..."],"dislikes":["..."]},"updates":{"hotelName":"<if learned>","hotelArea":"<Tokyo neighborhood if learned>","arrivalDate":"<YYYY-MM-DD if learned>","nights":<int if learned>,"prefs":["<interest tags if learned>"]},"chips":["<=3 short suggested replies"]}`;
