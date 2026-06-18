@@ -3048,7 +3048,7 @@ function LoginScreen({onAuthed,onSkip}){
         </div>
         <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.15}}>{step==='email'?'Sign in to Anchor':'Check your email'}</div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#6C6E8E',marginTop:7,lineHeight:1.5}}>
-          {step==='email'?'Your trips, anchors and scratchpad save to your account — on any device.':`Enter the 6-digit code we sent to ${email.trim().toLowerCase()}.`}
+          {step==='email'?'Anchor is invite-only. Sign in with an approved email — your trips save to your account on any device.':`Enter the 6-digit code we sent to ${email.trim().toLowerCase()}.`}
         </div>
         <div style={{marginTop:22}}>
           {step==='email'?(
@@ -3111,13 +3111,11 @@ function Root(){
   useEffect(()=>{(async()=>{
     const r=await API.me();
     const local=loadState();
-    if(!r.cloud){ setCloud(false); setInitialTrip(local); setPhase('app'); return; } // offline-only
+    if(!r.cloud){ setCloud(false); setInitialTrip(local); setPhase('app'); return; } // offline-only (D1 off)
     if(r.user){ await enterWithTrip(r.user); return; }
-    // Cloud configured but nobody signed in. NEVER wall existing local data behind
-    // login — enter with it; sign-in stays available in Settings. Only a brand-new
-    // device (no local trip) sees the login screen.
-    if(local){ setCloud(true); setInitialTrip(local); setPhase('app'); }
-    else { setCloud(true); setPhase('login'); }
+    // Cloud is on: require an approved sign-in to use the app (protects the API
+    // budget). Any existing local trip migrates up on first login (newest wins).
+    setCloud(true); setPhase('login');
   })();},[]); // eslint-disable-line
 
   // Debounced cloud save (only when signed in).
@@ -3129,7 +3127,7 @@ function Root(){
   const onLogout=async()=>{ await API.logout(); setUser(null); setInitialTrip(undefined); setPhase('login'); };
 
   if(phase==='loading') return <Splash/>;
-  if(phase==='login') return <LoginScreen onAuthed={enterWithTrip} onSkip={onSkipLogin}/>;
+  if(phase==='login') return <LoginScreen onAuthed={enterWithTrip}/>;
   return <App key={user?user.email:'offline'} initialTrip={initialTrip} user={user} cloud={cloud}
     onCloudSync={cloud&&user?onCloudSync:null} onLogout={cloud&&user?onLogout:null} onSignIn={cloud&&!user?onSignIn:null}/>;
 }

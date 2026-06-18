@@ -25,6 +25,14 @@ import { onRequest as authVerify } from './functions/api/auth-verify.js';
 import { onRequest as authMe } from './functions/api/auth-me.js';
 import { onRequest as authLogout } from './functions/api/auth-logout.js';
 import { onRequest as trip } from './functions/api/trip.js';
+import { getUser, unauthorized } from './functions/api/_auth.js';
+
+// Costly, model/scraper-backed endpoints: require a logged-in (approved) session
+// so account-less callers can't run up the API bill. Auth + health stay open.
+const PROTECTED = new Set([
+  '/api/concierge', '/api/tabelog', '/api/suggest', '/api/search', '/api/near',
+  '/api/optimize', '/api/chat', '/api/refine', '/api/parse-place', '/api/places', '/api/photo',
+]);
 
 const ROUTES = {
   '/api/health': health,
@@ -50,7 +58,14 @@ export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     const handler = ROUTES[pathname];
-    if (handler) return handler({ request, env });
+    if (handler) {
+      // Gate the costly endpoints behind an approved session (only when D1 is on).
+      if (env.DB && PROTECTED.has(pathname) && request.method !== 'OPTIONS') {
+        const user = await getUser(request, env);
+        if (!user) return unauthorized();
+      }
+      return handler({ request, env });
+    }
     // Not an API route → serve a static asset (index.html, /vendor/*, …).
     return env.ASSETS.fetch(request);
   },

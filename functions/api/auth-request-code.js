@@ -4,17 +4,20 @@
 // without an email provider — never enable DEV_AUTH in production.
 
 import { json, preflight, requireMethod } from './_lib.js';
-import { requireDB, sha256, randomCode, normalizeEmail, isEmail } from './_auth.js';
+import { requireDB, ensureSchema, isAllowed, sha256, randomCode, normalizeEmail, isEmail } from './_auth.js';
 import { sendLoginCode } from './_email.js';
 
 export async function onRequest({ request, env }) {
   const pf = preflight(request); if (pf) return pf;
   const bad = requireMethod(request, 'POST'); if (bad) return bad;
   const noDb = requireDB(env); if (noDb) return noDb;
+  await ensureSchema(env);
 
   let body; try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
   const email = normalizeEmail(body.email);
   if (!isEmail(email)) return json({ error: 'bad_email', message: 'Enter a valid email address.' }, 400);
+  // Approval gate: only allowlisted emails can get a code (don't burn email/APIs).
+  if (!isAllowed(email, env)) return json({ error: 'not_approved', message: 'This email isn’t approved yet. Ask the owner to add you, then try again.' }, 403);
 
   const code = randomCode();
   const now = Date.now();

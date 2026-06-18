@@ -9,12 +9,12 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
-  }
-  // Cloud accounts/sync are intentionally DISABLED for now. With no DB bound,
-  // env.DB is undefined → /api/auth/me returns 503 → the app runs purely offline
-  // (localStorage). That means NO login wall and NO code path that can overwrite
-  // local data with a stale cloud record — the data-loss class is gone.
-  // To re-enable later (cross-device + friend sharing): apply ./schema.sql to the
-  // DB, set RESEND_API_KEY + EMAIL_FROM, then restore this block (note leading comma):
-  //   ,"d1_databases": [{ "binding": "DB", "database_name": "anchor", "database_id": "f03dedd1e5494a0730a34776c549b24d" }]
+  },
+  // Accounts + cloud sync. Tables auto-create on first auth call (ensureSchema),
+  // so no manual migration. The data-loss class is fixed in the client (newest-
+  // wins merge; local migrates up on login). Account creation is gated by the
+  // AUTH_ALLOWLIST env var, and the costly APIs require a logged-in session.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "anchor", "database_id": "f03dedd1e5494a0730a34776c549b24d" }
+  ]
 }

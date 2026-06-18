@@ -38,6 +38,36 @@ export function requireDB(env) {
   return null;
 }
 
+// Create tables idempotently on first use, so no manual `wrangler d1 execute`.
+let _schemaReady = false;
+export async function ensureSchema(env) {
+  if (_schemaReady || !env.DB) return;
+  try {
+    await env.DB.batch([
+      env.DB.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL)'),
+      env.DB.prepare('CREATE TABLE IF NOT EXISTS login_codes (email TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)'),
+      env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_login_codes_email ON login_codes(email)'),
+      env.DB.prepare('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)'),
+      env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)'),
+      env.DB.prepare('CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)'),
+      env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_user ON trips(user_id)'),
+    ]);
+    _schemaReady = true;
+  } catch (e) { /* fail soft; next call retries */ }
+}
+
+// Allowlist gate for account creation. AUTH_ALLOWLIST is a comma-separated list
+// of approved emails. If it's unset, the gate is OPEN (so the owner isn't locked
+// out before configuring) — set it to start approving individually.
+export function allowlistConfigured(env) {
+  return Boolean((env.AUTH_ALLOWLIST || '').trim());
+}
+export function isAllowed(email, env) {
+  const list = (env.AUTH_ALLOWLIST || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return true;
+  return list.includes(normalizeEmail(email));
+}
+
 function parseCookies(request) {
   const out = {};
   const raw = request.headers.get('cookie') || '';

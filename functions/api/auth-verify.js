@@ -2,17 +2,19 @@
 // Validates the code, creates/loads the user, opens a session (httpOnly cookie).
 
 import { json, preflight, requireMethod } from './_lib.js';
-import { requireDB, sha256, normalizeEmail, createSession, sessionCookie } from './_auth.js';
+import { requireDB, ensureSchema, isAllowed, sha256, normalizeEmail, createSession, sessionCookie } from './_auth.js';
 
 export async function onRequest({ request, env }) {
   const pf = preflight(request); if (pf) return pf;
   const bad = requireMethod(request, 'POST'); if (bad) return bad;
   const noDb = requireDB(env); if (noDb) return noDb;
+  await ensureSchema(env);
 
   let body; try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
   const email = normalizeEmail(body.email);
   const code = String(body.code || '').trim();
   if (!email || !/^\d{6}$/.test(code)) return json({ error: 'bad_input', message: 'Enter the 6-digit code.' }, 400);
+  if (!isAllowed(email, env)) return json({ error: 'not_approved', message: 'This email isn’t approved yet.' }, 403);
 
   const row = await env.DB.prepare('SELECT rowid, code_hash, expires_at, attempts FROM login_codes WHERE email=? ORDER BY created_at DESC LIMIT 1')
     .bind(email).first();

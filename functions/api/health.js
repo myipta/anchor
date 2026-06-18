@@ -26,6 +26,7 @@ export async function onRequest(context) {
     cloud: {
       db: Boolean(env.DB),
       email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
+      allowlist: (env.AUTH_ALLOWLIST || '').split(',').map(s => s.trim()).filter(Boolean).length, // # approved emails (0 = gate open)
       devAuth: env.DEV_AUTH === '1',
     },
     suggestModel: env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
