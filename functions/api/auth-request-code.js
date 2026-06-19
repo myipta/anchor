@@ -27,7 +27,12 @@ export async function onRequest({ request, env }) {
 
   const mail = await sendLoginCode(env, email, code);
   const out = { ok: true, sent: mail.sent };
-  if (!mail.sent && env.DEV_AUTH === '1') out.devCode = code; // dev convenience only
-  if (!mail.sent && env.DEV_AUTH !== '1') out.message = 'Email delivery is not configured yet.';
+  if (!mail.sent) {
+    if (env.DEV_AUTH === '1') out.devCode = code; // dev convenience only
+    out.message = mail.error === 'email_unconfigured'
+      ? 'Email isn’t set up on the server.'
+      : 'Couldn’t deliver the code to this address. (With Resend’s test sender, only the Resend account’s own email receives codes — verify a domain to email anyone.)';
+    if (mail.detail) out.detail = mail.detail; // raw Resend reason, for debugging
+  }
   return json(out);
 }
