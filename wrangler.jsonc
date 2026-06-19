@@ -15,6 +15,6 @@
   // wins merge; local migrates up on login). Account creation is gated by the
   // AUTH_ALLOWLIST env var, and the costly APIs require a logged-in session.
   "d1_databases": [
-    { "binding": "DB", "database_name": "anchor", "database_id": "f03dedd1e5494a0730a34776c549b24d" }
+    { "binding": "DB", "database_name": "anchor", "database_id": "6d9ce729-d58f-43d6-94ad-ce77b1f324dd" }
   ]
 }
