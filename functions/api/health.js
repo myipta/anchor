@@ -6,6 +6,7 @@
 
 import { json, preflight } from './_lib.js';
 import { tabelogProbe, tabelogActorInfo } from './_tabelog.js';
+import { sendLoginCode } from './_email.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -35,6 +36,12 @@ export async function onRequest(context) {
   };
 
   const url = new URL(request.url);
+  if (url.searchParams.get('email')) {
+    // Test-send via Resend and surface the exact result (status + error detail),
+    // e.g. /api/health?email=you@example.com
+    base.emailFrom = env.EMAIL_FROM || null;
+    base.emailTest = await sendLoginCode(env, url.searchParams.get('email'), '000000');
+  }
   if (url.searchParams.get('actor')) {
     base.actor = await tabelogActorInfo(env);
   }
