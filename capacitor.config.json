@@ -1,0 +1,13 @@
+{
+  "appId": "dev.mattyip.anchor",
+  "appName": "Anchor",
+  "webDir": "public",
+  "server": {
+    "url": "https://anchor.mattyip.dev",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#FAFAFD"
+  }
+}
