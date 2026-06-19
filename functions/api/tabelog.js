@@ -7,7 +7,7 @@
 // back to a fast Google Places search if Tabelog is unconfigured or empty.
 
 import { json, preflight, requireMethod } from './_lib.js';
-import { tabelogSearch, tabelogLookup } from './_tabelog.js';
+import { tabelogSearch } from './_tabelog.js';
 import { runSearch, lookupPlace } from './_search.js';
 
 export async function onRequest(context) {
@@ -48,13 +48,16 @@ export async function onRequest(context) {
   places.sort((a, b) => (a.openNow === 'closed' ? 1 : 0) - (b.openNow === 'closed' ? 1 : 0));
   places = places.slice(0, 5);
 
-  // Attach each pick's DIRECT Tabelog page URL (+ score) so tapping opens the
-  // Tabelog app instead of a name search. Fails soft → keeps the search link.
-  await Promise.all(places.map(async p => {
-    if (p.tabelogUrl) return;
-    const tl = await tabelogLookup({ name: p.name, area: p.area });
-    if (tl) { p.tabelogUrl = tl.tabelogUrl; if (p.tabelogRating == null && tl.tabelogRating != null) p.tabelogRating = tl.tabelogRating; }
-  }));
+  // Google deep-links to the app precisely (already the card's tap). Tabelog can
+  // only be a search for us (no ID/API access), so fetch each pick's LOCAL
+  // Japanese name from Google and use THAT for the Tabelog search — far more
+  // reliable than the English name ("Akafuda" → 赤札).
+  if (env.GOOGLE_PLACES_API_KEY && !source?.startsWith('tabelog')) {
+    await Promise.all(places.map(async p => {
+      const ja = await lookupPlace(env, p.name, p.area, 'ja');
+      if (ja && ja.name && ja.name !== p.name) p.jaName = ja.name;
+    }));
+  }
 
   return json({ places, source, tabelogError });
 }

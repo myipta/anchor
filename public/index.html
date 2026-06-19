@@ -1363,19 +1363,19 @@ function openTabelog(tabelogUrl,webFallback){
   try{ window.location.href='tabelog://rstdtl/'+id; }catch{}
   setTimeout(()=>{ document.removeEventListener('visibilitychange',onHide); if(!left&&web) window.open(web,'_blank','noopener'); },800);
 }
-function sourceUrls(name,area,googleUrl,tabelogUrl){
+function sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName){
   const q=encodeURIComponent(`${name} ${area||''} Tokyo`.trim());
+  // Search Tabelog with the LOCAL (Japanese) name when we have it — far more
+  // reliable than the English name. Real restaurant page if we ever have it.
+  const tbTerm=tabelogName||name;
   return {
     google:googleUrl||`https://www.google.com/maps/search/?api=1&query=${q}`,
     yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' Tokyo').trim())}`,
-    // Prefer the restaurant's real Tabelog page (opens the installed app via
-    // universal links). Without it, fall back to a JP search (avoids the English
-    // language-modal homepage).
-    tabelog:tabelogUrl||`https://tabelog.com/rstLst/?sw=${encodeURIComponent(name)}`,
+    tabelog:tabelogUrl||`https://tabelog.com/rstLst/?sw=${encodeURIComponent(tbTerm)}`,
   };
 }
-function SourceLinks({name,area,googleUrl,tabelogUrl,label=true}){
-  const u=sourceUrls(name,area,googleUrl,tabelogUrl);
+function SourceLinks({name,area,googleUrl,tabelogUrl,tabelogName,label=true}){
+  const u=sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName);
   const tbId=tabelogStoreId(tabelogUrl);
   const items=[
     {k:'Google',href:u.google,color:'#4285F4'},
@@ -2250,7 +2250,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
                     {distAnchor&&<div style={{marginTop:9}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
                     {p.why&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div></div>}
                     <div style={{marginTop:9,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                      <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} tabelogUrl={p.tabelogUrl} label={false}/>
+                      <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} tabelogUrl={p.tabelogUrl} tabelogName={p.jaName} label={false}/>
                       <div style={{display:'flex',gap:7,flexShrink:0}}>
                         <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'like');}} aria-label="More like this" title="More like this" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
                         <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'dislike');}} aria-label="Not for me" title="Not for me" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>

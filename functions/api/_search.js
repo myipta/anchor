@@ -108,7 +108,7 @@ async function googleText(env, query, area, limit) {
 // ── Look up ONE named place for live data (coords→distance, rating, price). ──
 // Used by the concierge to enrich Claude's recommendations and to geocode the
 // hotel. Returns enriched fields or null; fails soft.
-export async function lookupPlace(env, name, area) {
+export async function lookupPlace(env, name, area, lang = 'en') {
   if (!env.GOOGLE_PLACES_API_KEY || !name) return null;
   const textQuery = `${name}${area ? ', ' + area : ''}, Tokyo`;
   const fieldMask = ['places.displayName','places.formattedAddress','places.rating','places.userRatingCount',
@@ -119,7 +119,7 @@ export async function lookupPlace(env, name, area) {
     r = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': fieldMask },
-      body: JSON.stringify({ textQuery, maxResultCount: 1, languageCode: 'en', regionCode: 'JP' }),
+      body: JSON.stringify({ textQuery, maxResultCount: 1, languageCode: lang, regionCode: 'JP' }),
     });
   } catch { return null; }
   if (!r.ok) return null;
