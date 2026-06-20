@@ -23,9 +23,15 @@
   }
   if(navigator.storage&&navigator.storage.persist){ navigator.storage.persist().catch(function(){}); }
 
+  // Inside the native (Capacitor) app there's no Safari URL bar, but the WebView
+  // still reports display-mode:browser — so zero out the Safari floating-bar
+  // inset (otherwise the bottom nav has a nav-bar's worth of dead space).
+  var inCapacitor = !!(window.Capacitor || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge));
+  if(inCapacitor){ document.documentElement.style.setProperty('--safari-inset','0px'); }
+
   // One-time "Add to Home Screen" tip — only on iOS Safari, only in a browser tab.
   try{
-    var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone || inCapacitor;
     var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
     if(isIOS && !standalone && !localStorage.getItem('a2hs_dismissed')){
       window.addEventListener('load',function(){
@@ -164,7 +170,7 @@ function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-U
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 2 · Jun 20';
+const BUILD='build 3 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
