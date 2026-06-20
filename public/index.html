@@ -163,6 +163,8 @@ function fmtDateLong(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US
 function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});}
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
+// Visible build stamp — bump this each deploy to confirm the latest page loaded.
+const BUILD='build 2 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -2173,7 +2175,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
         <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#FB7242,#F857A6)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{fontSize:20}}>⚓</span></div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Your Tokyo local</div>
-          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{needsSetup?'Plan + recommendations, all in chat':'Chat for recommendations — the more you talk, the better'}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{needsSetup?'Plan + recommendations, all in chat':'Chat for recommendations — the more you talk, the better'} · {BUILD}</div>
         </div>
         <button onClick={()=>push({type:'trip'})} aria-label="Trip controls" style={{flexShrink:0,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1,border:'1.5px solid '+(needsSetup?'#FBD9C9':'#E3E5F0'),background:needsSetup?'#FFF4EE':'#fff',borderRadius:12,padding:'7px 11px',cursor:'pointer'}}>
           <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:12.5,color:needsSetup?'#E05B2B':'#16172A',lineHeight:1.1}}>{needsSetup?'Set up trip':(hotelArea||'Tokyo')}</span>
@@ -3068,6 +3070,7 @@ function LoginScreen({onAuthed,onSkip}){
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="3"/><path d="M12 8v13M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
         </div>
         <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.15}}>{step==='email'?'Sign in to Anchor':'Check your email'}</div>
+        <div style={{fontFamily:"'Geist Mono',monospace",fontSize:11,color:'#B6B8CC',marginTop:4}}>{BUILD}</div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#6C6E8E',marginTop:7,lineHeight:1.5}}>
           {step==='email'?'Anchor is invite-only. Sign in with an approved email — your trips save to your account on any device.':`Enter the 6-digit code we sent to ${email.trim().toLowerCase()}.`}
         </div>
