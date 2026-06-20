@@ -1371,7 +1371,7 @@ function sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName){
   return {
     google:googleUrl||`https://www.google.com/maps/search/?api=1&query=${q}`,
     yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' Tokyo').trim())}`,
-    tabelog:tabelogUrl||`https://tabelog.com/rstLst/?sw=${encodeURIComponent(tbTerm)}`,
+    tabelog:tabelogUrl||`https://tabelog.com/tokyo/rstLst/?sw=${encodeURIComponent(tbTerm+(area?' '+area:''))}`,
   };
 }
 function SourceLinks({name,area,googleUrl,tabelogUrl,tabelogName,label=true}){
@@ -3134,10 +3134,9 @@ function Root(){
     const local=loadState();
     if(!r.cloud){ setCloud(false); setInitialTrip(local); setPhase('app'); return; } // offline-only (D1 off)
     if(r.user){ await enterWithTrip(r.user); return; }
-    // Cloud is on but not signed in: let them in with local data; sign-in is
-    // prompted inline when they use a gated feature (the concierge) and is in
-    // Settings. The costly APIs stay protected server-side regardless.
-    setCloud(true); setInitialTrip(local); setPhase('app');
+    // Cloud is on, not signed in: require sign-in up front (cleaner than letting
+    // them start then interrupting). Existing local data migrates up on login.
+    setCloud(true); setPhase('login');
   })();},[]); // eslint-disable-line
 
   // Debounced cloud save (only when signed in).
