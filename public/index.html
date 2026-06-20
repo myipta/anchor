@@ -172,7 +172,7 @@ function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-U
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 4 · Jun 20';
+const BUILD='build 5 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -2812,16 +2812,18 @@ const NAV=[{id:'today',label:'Today'},{id:'discover',label:'Discover'},{id:'near
 
 function BottomNav({tab,setTab}) {
   return (
-    <div style={{flexShrink:0,display:'flex',padding:'8px 2px calc(10px + env(safe-area-inset-bottom) + var(--safari-inset))',background:'rgba(255,255,255,0.86)',backdropFilter:'blur(18px)',borderTop:'1px solid #ECEDF6',zIndex:20}}>
-      {NAV.map(t=>{
-        const on=tab===t.id;
-        return (
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'6px 0',border:'none',background:'transparent',cursor:'pointer',color:on?'#6C5CE7':'#9092AD'}}>
-            <TabIco id={t.id} on={on}/>
-            <span style={{fontSize:10,fontWeight:600,fontFamily:"'Hanken Grotesk',sans-serif"}}>{t.label}</span>
-          </button>
-        );
-      })}
+    <div style={{flexShrink:0,paddingLeft:14,paddingRight:14,paddingTop:6,paddingBottom:'max(8px, calc(env(safe-area-inset-bottom) - 14px))',background:'transparent'}}>
+      <div style={{display:'flex',background:'rgba(255,255,255,0.9)',backdropFilter:'blur(22px)',WebkitBackdropFilter:'blur(22px)',borderRadius:24,padding:'6px 6px',boxShadow:'0 8px 26px rgba(22,23,42,0.16),0 1px 4px rgba(22,23,42,0.10)',border:'1px solid rgba(22,23,42,0.06)'}}>
+        {NAV.map(t=>{
+          const on=tab===t.id;
+          return (
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'3px 0',border:'none',background:'transparent',cursor:'pointer',color:on?'#6C5CE7':'#9092AD'}}>
+              <TabIco id={t.id} on={on}/>
+              <span style={{fontSize:9.5,fontWeight:600,fontFamily:"'Hanken Grotesk',sans-serif"}}>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
