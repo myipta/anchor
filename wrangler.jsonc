@@ -6,6 +6,17 @@
   "name": "anchor",
   "main": "worker.js",
   "compatibility_date": "2026-06-15",
+  // Non-secret config lives here so deploys never wipe it (plaintext dashboard
+  // vars get reset on every `wrangler deploy` — only secrets + these survive).
+  // API keys stay as encrypted secrets in the dashboard, never here.
+  "vars": {
+    // Resend sender. Test sender (onboarding@resend.dev) only emails the Resend
+    // account owner — switch to "Anchor <login@send.mattyip.dev>" once that
+    // domain shows Verified in Resend, so allow-listed friends get codes too.
+    "EMAIL_FROM": "Anchor <onboarding@resend.dev>",
+    // Approved sign-in emails (comma-separated). Add a friend = add their email.
+    "AUTH_ALLOWLIST": "matthew.yip2011@gmail.com,myip2009@gmail.com"
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
