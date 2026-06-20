@@ -48,6 +48,20 @@
       });
     }
   }catch(e){}
+  (function(){
+    var root=null;
+    function vvFix(){
+      if(!root) root=document.getElementById('root');
+      if(!root||!window.visualViewport) return;
+      var kbH=Math.max(0,window.innerHeight-window.visualViewport.height-window.visualViewport.offsetTop);
+      root.style.bottom=kbH+'px';
+    }
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',vvFix);
+      window.visualViewport.addEventListener('scroll',vvFix);
+    }
+    window.addEventListener('scroll',function(){window.scrollTo(0,0);});
+  })();
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,8 +75,8 @@
 html,body{height:100%;height:100dvh;overflow:hidden;overscroll-behavior:none;touch-action:pan-y;-webkit-text-size-adjust:100%}
 body{font-family:'Hanken Grotesk',sans-serif;background:#FAFAFD;display:flex;justify-content:center}
 @media(min-width:600px){body{background:#DDE0EB}}
-#root{width:100%;max-width:100%;height:100dvh;background:#FAFAFD;position:relative;display:flex;flex-direction:column;overflow:hidden;padding-top:env(safe-area-inset-top)}
-@media(min-width:600px){#root{max-width:430px}}
+#root{width:100%;max-width:100%;background:#FAFAFD;position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;padding-top:env(safe-area-inset-top)}
+@media(min-width:600px){#root{width:430px;left:50%;right:auto;transform:translateX(-50%)}}
 /* iOS Safari shows a floating bottom address bar that overlays content and is
    NOT covered by safe-area-inset-bottom. Reserve extra space, but only in a
    mobile browser tab — installed PWAs (display-mode:standalone) don't need it. */
@@ -172,7 +186,7 @@ function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-U
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 5 · Jun 20';
+const BUILD='build 6 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
