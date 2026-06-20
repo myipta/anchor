@@ -186,7 +186,7 @@ function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-U
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 6 · Jun 20';
+const BUILD='build 7 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -939,7 +939,7 @@ function OnboardingFlow({onComplete,initialData}){
       checkin:arrive||todayStr(),checkout:depart||addDays(arrive||todayStr(),nights),
       ...(hp?{address:hp.address,coords:hp.coords,googleUrl:hp.googleUrl,rating:hp.rating,reviews:hp.reviews,hours:hp.hours,category:hp.category}:{})
     }]:[];
-    onComplete({destination:'Tokyo',arrivalDate:arrive||todayStr(),departureDate:depart||addDays(arrive||todayStr(),nights),nights,anchors,prefs,anchoredPlaces:initialData?.anchoredPlaces||[]});
+    onComplete({...(initialData||{}),destination:'Tokyo',arrivalDate:arrive||todayStr(),departureDate:depart||addDays(arrive||todayStr(),nights),nights,anchors,prefs,anchoredPlaces:initialData?.anchoredPlaces||[]});
   };
 
   if(step===0) return(
@@ -2182,7 +2182,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
     let label='';
     if(type==='save'){ onStash&&onStash(p,'idea'); label='Saved to your scratchpad'; }
     else if(type==='anchor'){ onStash&&onStash(p,'anchored'); label='Anchored — I’ll build around it'; }
-    else if(type==='like'){ if(p.category) onLearn&&onLearn([p.category],[]); label='Noted — I’ll lean toward this'; }
+    else if(type==='like'){ if(p.category) onLearn&&onLearn([p.category],[]); onStash&&onStash(p,'idea'); label="Saved to scratchpad · I'll find more like this"; }
     else if(type==='dislike'){ onSkipRec&&onSkipRec(p.name); label='Got it — skipping this and similar'; }
     else { onSkipRec&&onSkipRec(p.name); label='Skipped — I won’t show it again'; }
     setConvo&&setConvo(prev=>(prev||[]).map(x=>x.id===mid?{...x,acted:{...(x.acted||{}),[j]:{type,label}}}:x));
