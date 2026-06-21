@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/global.css';
 import { API } from './api/client.js';
+import { addDays, daysBetween, fmtDate, fmtDateLong, fmtMonthYear, todayStr } from './lib/dates.js';
+import { blankTrip, loadChat, loadTrip, saveChat, saveTrip, tripNeedsSetup } from './state/trip.js';
 
 /* ── DATA ── */
 const CATS = {
@@ -83,14 +85,6 @@ const PAIRS = {
 };
 
 /* ── UTILITIES ── */
-function addDays(d,n){const dt=new Date(d+'T00:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);}
-function daysBetween(from,to){return Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000);}
-function todayStr(){return new Date().toISOString().slice(0,10);}
-function fmtDate(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
-function fmtDateLong(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
-function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});}
-function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
-function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
 const BUILD='build 8 · Jun 20';
 
@@ -512,12 +506,6 @@ function draftToInit(d){
     anchoredPlaces:[],
   };
 }
-
-// A minimal valid trip so new users land straight in the concierge (no setup
-// form). The concierge fills in hotel/dates/interests through conversation.
-function blankTrip(){return {destination:'Tokyo',arrivalDate:'',nights:0,anchors:[],prefs:[],anchoredPlaces:[],taste:{likes:[],dislikes:[]},createdAt:Date.now()};}
-// "Not set up yet" = no hotel anchor and no arrival date.
-function tripNeedsSetup(t){return !t||(!((t.anchors||[]).length)&&!t.arrivalDate);}
 
 function DraftPill({children}){
   return <span style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.14)',color:'#fff',borderRadius:999,padding:'6px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>{children}</span>;
@@ -2616,7 +2604,7 @@ function BottomNav({tab,setTab}) {
 
 /* ── APP ── */
 function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
-  const bootRaw=(initialTrip!==undefined?initialTrip:loadState());
+  const bootRaw=(initialTrip!==undefined?initialTrip:loadTrip());
   const [trip,setTrip]=useState(()=> bootRaw || blankTrip());
   const [editingTrip,setEditingTrip]=useState(false);
   const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form' (legacy edit form)
@@ -2662,13 +2650,13 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   },[]); // eslint-disable-line
 
   // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
-  const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveState(t);setTrip(t);onCloudSync&&onCloudSync(t);};
+  const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveTrip(t);setTrip(t);onCloudSync&&onCloudSync(t);};
   // Persist a freshly bootstrapped blank trip so a reload keeps it.
-  useEffect(()=>{ if(!loadState()&&trip) saveState(trip); },[]); // eslint-disable-line
+  useEffect(()=>{ if(!loadTrip()&&trip) saveTrip(trip); },[]); // eslint-disable-line
   // Concierge conversation lives in App (survives tab switches) + localStorage
   // (survives reload), so it isn't lost when the Search tab unmounts.
-  const [convo,setConvo]=useState(()=>{try{const c=JSON.parse(localStorage.getItem('anchor_chat')||'null');return Array.isArray(c)&&c.length?c:null;}catch{return null;}});
-  const updateConvo=React.useCallback(next=>{ setConvo(prev=>{ const v=typeof next==='function'?next(prev):next; try{localStorage.setItem('anchor_chat',JSON.stringify((v||[]).slice(-40)));}catch{} return v; }); },[]);
+  const [convo,setConvo]=useState(()=>loadChat());
+  const updateConvo=React.useCallback(next=>{ setConvo(prev=>{ const v=typeof next==='function'?next(prev):next; saveChat(v); return v; }); },[]);
   // Apply trip setup the concierge gathered through conversation (no setup form).
   const onSetup=updates=>{
     if(!updates||typeof updates!=='object'||!Object.keys(updates).length) return;
@@ -2920,13 +2908,13 @@ function Root(){
   // cloud converges. This makes an empty/stale cloud record harmless.
   const enterWithTrip=async(u)=>{
     const res=await API.tripGet();
-    const local=loadState();
+    const local=loadTrip();
     const cloud=(res&&res.trip&&typeof res.trip==='object')?res.trip:null;
     const cloudT=cloud?(Number(res.updated_at)||Number(cloud.updatedAt)||0):0;
     const localT=local?(Number(local.updatedAt)||0):0;
     const useCloud=cloud&&cloudT>localT;             // local wins ties + legacy (localT=0)
     const chosen=useCloud?cloud:(local||cloud||null);
-    if(chosen){ saveState(chosen); setInitialTrip(chosen); }
+    if(chosen){ saveTrip(chosen); setInitialTrip(chosen); }
     else { setInitialTrip(null); }
     if(chosen&&!useCloud) API.tripPut(chosen);        // converge cloud to the kept copy
     setUser(u); setCloud(true); setPhase('app');
@@ -2934,11 +2922,11 @@ function Root(){
 
   // Re-show login on demand (from Settings); escape hatch back to local data.
   const onSignIn=()=>setPhase('login');
-  const onSkipLogin=()=>{ setInitialTrip(loadState()); setCloud(true); setPhase('app'); };
+  const onSkipLogin=()=>{ setInitialTrip(loadTrip()); setCloud(true); setPhase('app'); };
 
   useEffect(()=>{(async()=>{
     const r=await API.me();
-    const local=loadState();
+    const local=loadTrip();
     if(!r.cloud){ setCloud(false); setInitialTrip(local); setPhase('app'); return; } // offline-only (D1 off)
     if(r.user){ await enterWithTrip(r.user); return; }
     // Cloud is on, not signed in: require sign-in up front (cleaner than letting
