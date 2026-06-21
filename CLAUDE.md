@@ -84,6 +84,10 @@ local" that recommends real places, learns taste, plans days) wrapped as an
 - `/api/health?actor=1` — Apify actor input schema (uses the token; never returns it).
 - `/api/health?email=addr` — test a Resend send, shows the exact error.
 
+## Future roadmap
+- Multi-trip support: current cloud schema stores one trip blob per user (`idx_trips_user`). Future work should support multiple trips per user with an active/selected trip, while preserving local/offline behavior and cloud merge safety.
+- Multi-city support: current product copy, prompts, built-in data, and area defaults assume Tokyo. Generalize destination/city through the trip object and prompts before adding city-specific content. Recommendation providers must become destination-aware: Tabelog is Japan-only; outside Japan use Google Places and/or other local providers, not Tabelog links.
+
 ## Current state / open items
 - ✅ Web app, auth (allowlist + Resend verified), API gating, iOS app running in sim.
 - 🔭 **Bottom nav**: just redesigned as a floating pill (BUILD 5) — may need spacing
