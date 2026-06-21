@@ -140,4 +140,4 @@ so you can sign in locally without email. **Never set `DEV_AUTH` in production.*
 
 ## Email intake
 
-Forward flight and hotel confirmations to `trips@mattyip.dev` from an allowlisted account. Configure Cloudflare Email Routing so that address invokes the `anchor` Worker. The Worker also exposes authenticated `POST /api/intake/email` with `{ "subject": "...", "text": "..." }` for testing. Parsed hotel details update a matching hotel anchor by confirmation/name, or append a new hotel anchor if none matches; flights are stored in `trip.flights`; import summaries are stored in `trip.travelInbox`.
+Forward flight and hotel confirmations to `trips@mattyip.dev` from an allowlisted account. Configure Cloudflare Email Routing so that address invokes the `anchor` Worker. The Worker also exposes authenticated `POST /api/intake/email` with `{ "subject": "...", "text": "..." }` for testing. Parsed hotel details update a matching hotel anchor by confirmation/name, or append a new hotel anchor if none matches; flights are stored in `trip.flights`; existing itinerary day stops are detached but preserved as anchored places; import summaries are stored in `trip.travelInbox`.

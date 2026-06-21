@@ -133,9 +133,9 @@ function normalizeExtracted(parsed, fallback) {
   return out;
 }
 
-async function mergeTravelIntoTrip(env, trip, extracted, meta) {
+export async function mergeTravelIntoTrip(env, trip, extracted, meta) {
   const t = { ...trip };
-  const applied = { hotel: false, flights: 0, inbox: true };
+  const applied = { hotel: false, flights: 0, inbox: true, detachedStops: 0 };
   const hotel = extracted.hotel || null;
   if (hasHotel(hotel)) {
     const anchors = Array.isArray(t.anchors) ? [...t.anchors] : [];
@@ -186,6 +186,10 @@ async function mergeTravelIntoTrip(env, trip, extracted, meta) {
     if (arrDate && !t.arrivalDate) t.arrivalDate = arrDate;
   }
 
+  if (applied.hotel || (extracted.flights || []).length) {
+    applied.detachedStops = detachItineraryToAnchors(t);
+  }
+
   const inbox = Array.isArray(t.travelInbox) ? t.travelInbox : [];
   t.travelInbox = [{
     id: 'mail-' + meta.receivedAt + '-' + Math.random().toString(36).slice(2, 7),
@@ -195,9 +199,36 @@ async function mergeTravelIntoTrip(env, trip, extracted, meta) {
     summary: extracted.summary || summaryFor(extracted),
     hotelUpdated: applied.hotel,
     flightsAdded: applied.flights,
+    detachedStops: applied.detachedStops,
   }, ...inbox].slice(0, INBOX_LIMIT);
 
   return { trip: t, applied };
+}
+
+export function detachItineraryToAnchors(trip) {
+  const itinerary = trip && typeof trip.itinerary === 'object' ? trip.itinerary : null;
+  if (!itinerary) return 0;
+
+  const curated = new Set(Array.isArray(trip.anchoredPlaces) ? trip.anchoredPlaces : []);
+  const scratchIds = new Set();
+  let count = 0;
+
+  Object.values(itinerary).forEach(day => {
+    if (!Array.isArray(day)) return;
+    day.forEach(ref => {
+      if (!ref || !ref.id) return;
+      if (ref.kind === 'curated') { curated.add(ref.id); count++; }
+      else if (ref.kind === 'scratch') { scratchIds.add(ref.id); count++; }
+    });
+  });
+
+  if (!count) return 0;
+  trip.anchoredPlaces = [...curated];
+  if (scratchIds.size && Array.isArray(trip.scratchpad)) {
+    trip.scratchpad = trip.scratchpad.map(item => scratchIds.has(item.id) ? { ...item, status: 'anchored' } : item);
+  }
+  trip.itinerary = {};
+  return count;
 }
 
 function parseHeaders(head) {
