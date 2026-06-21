@@ -60,10 +60,10 @@ local" that recommends real places, learns taste, plans days) wrapped as an
   Tabelog IDs + the `tabelog://rstdtl/{id}` deep-link (helpers already in `index.html`).
 
 ## Email intake
-- Goal: forward flight/hotel confirmation emails to `trips@mattyip.dev`; Anchor parses them and merges hotel/dates/flights into the user's saved trip blob.
+- Goal: forward flight/hotel confirmation emails to `trips@mattyip.dev`; Anchor parses them and merges hotel/dates/flights into the user's active trip.
 - Code paths: Worker `email(message, env, ctx)` for real inbound mail, plus authenticated `POST /api/intake/email` for testing/manual paste. Shared parser/merge logic lives in `functions/api/_intake.js`; extraction uses Claude Sonnet (`ANTHROPIC_MODEL` or `claude-sonnet-4-6`), with only a small regex fallback if Claude is unavailable.
-- Cloudflare Email Routing still has to route `trips@mattyip.dev` to this Worker. Sender must be allowlisted; if the user row does not exist yet, inbound mail creates it so the trip is waiting after first login.
-- Imported shape: hotel updates a matching hotel anchor by confirmation/name, or appends a new hotel anchor if none matches; trip dates/nights derive from hotel check-in/out, flights append/dedupe in `trip.flights`. If a trip already has itinerary day stops, email intake clears `trip.itinerary` but preserves those refs as anchors (`anchoredPlaces` for curated, `status:"anchored"` for scratchpad). Recent imports live in `trip.travelInbox`.
+- Cloudflare Email Routing routes `trips@mattyip.dev` to this Worker. Sender must be allowlisted; if the user row does not exist yet, inbound mail creates it so the trip is waiting after first login.
+- Imported shape: hotel updates a matching hotel anchor by confirmation/name, or appends a new hotel anchor if none matches; trip dates/nights derive from hotel check-in/out, flights append/dedupe in `trip.flights`. If a trip already has itinerary day stops, email intake clears `trip.itinerary` but preserves those refs as anchors (`anchoredPlaces` for curated, `status:"anchored"` for scratchpad). Recent imports live in `trip.travelInbox`. If the saved blob is a multi-trip library, intake updates only `activeTripId`.
 
 ## iOS app (Capacitor)
 - Config: `capacitor.config.json` (`appId dev.mattyip.anchor`, `server.url` = live
@@ -84,9 +84,10 @@ local" that recommends real places, learns taste, plans days) wrapped as an
 - `/api/health?actor=1` — Apify actor input schema (uses the token; never returns it).
 - `/api/health?email=addr` — test a Resend send, shows the exact error.
 
-## Future roadmap
-- Multi-trip support: current cloud schema stores one trip blob per user (`idx_trips_user`). Future work should support multiple trips per user with an active/selected trip, while preserving local/offline behavior and cloud merge safety.
-- Multi-city support: current product copy, prompts, built-in data, and area defaults assume Tokyo. Generalize destination/city through the trip object and prompts before adding city-specific content. Recommendation providers must become destination-aware: Tabelog is Japan-only; outside Japan use Google Places and/or other local providers, not Tabelog links.
+## Trips and roadmap
+- Multi-trip support is implemented inside the existing one-row cloud/local blob: `{ version: 2, activeTripId, trips }`. This avoids a D1 schema migration while preserving local/offline behavior and cloud merge safety.
+- The Today tab owns trip selection and creation. Anchors, scratchpad, itinerary, flights, inbox, and hotel details are per trip. Creating a trip copies only training data from the active trip (`prefs` and `taste`), so edits in the new trip do not flow back to the source trip.
+- Future multi-city work: current product copy, prompts, built-in data, and area defaults still assume Tokyo in many places. Generalize destination/city through the trip object and prompts before adding city-specific content. Recommendation providers must become destination-aware: Tabelog is Japan-only; outside Japan use Google Places and/or other local providers, not Tabelog links.
 
 ## Current state / open items
 - ✅ Web app, auth (allowlist + Resend verified), API gating, iOS app running in sim.

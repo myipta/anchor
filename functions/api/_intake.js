@@ -51,13 +51,16 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
 
   const extracted = await extractTravelInfo(env, { subject, text: cleanText, from });
   const row = await env.DB.prepare('SELECT id, data FROM trips WHERE user_id=?').bind(user.id).first();
-  let trip = null;
-  if (row) { try { trip = JSON.parse(row.data); } catch { trip = null; } }
-  const before = summarizeTrip(trip);
-  const merged = await mergeTravelIntoTrip(env, trip || blankTrip(), extracted, { subject, from, receivedAt });
+  let stored = null;
+  if (row) { try { stored = JSON.parse(row.data); } catch { stored = null; } }
+  const library = toTripLibrary(stored);
+  const activeTrip = activeTripFromLibrary(library);
+  const before = summarizeTrip(activeTrip);
+  const merged = await mergeTravelIntoTrip(env, activeTrip, extracted, { subject, from, receivedAt });
   const now = Date.now();
   merged.trip.updatedAt = now;
-  const dataStr = JSON.stringify(merged.trip);
+  const nextLibrary = { ...updateActiveTripInLibrary(library, merged.trip), updatedAt: now };
+  const dataStr = JSON.stringify(nextLibrary);
   if (row) await env.DB.prepare('UPDATE trips SET data=?, updated_at=? WHERE user_id=?').bind(dataStr, now, user.id).run();
   else await env.DB.prepare('INSERT INTO trips (id, user_id, data, updated_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), user.id, dataStr, now).run();
 
@@ -401,8 +404,55 @@ function dateDiff(from, to) {
   return Math.max(0, Math.round((b - a) / 86400000));
 }
 
+const LIBRARY_VERSION = 2;
+
+function newTripId() {
+  try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch {}
+  return 'trip-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function isTripLibrary(value) {
+  return Boolean(value && typeof value === 'object' && value.version === LIBRARY_VERSION && Array.isArray(value.trips));
+}
+
+function ensureTrip(trip) {
+  const t = trip && typeof trip === 'object' ? { ...trip } : blankTrip();
+  if (!t.id) t.id = newTripId();
+  if (!t.destination) t.destination = 'Tokyo';
+  if (!Array.isArray(t.anchors)) t.anchors = [];
+  if (!Array.isArray(t.prefs)) t.prefs = [];
+  if (!Array.isArray(t.anchoredPlaces)) t.anchoredPlaces = [];
+  if (!t.taste || typeof t.taste !== 'object') t.taste = { likes: [], dislikes: [] };
+  if (!Array.isArray(t.taste.likes)) t.taste.likes = [];
+  if (!Array.isArray(t.taste.dislikes)) t.taste.dislikes = [];
+  if (!t.createdAt) t.createdAt = Date.now();
+  return t;
+}
+
+function toTripLibrary(value) {
+  if (isTripLibrary(value)) {
+    const trips = value.trips.map(ensureTrip);
+    const activeTripId = trips.some(t => t.id === value.activeTripId) ? value.activeTripId : trips[0]?.id;
+    return { version: LIBRARY_VERSION, activeTripId, trips, createdAt: value.createdAt || Date.now(), updatedAt: value.updatedAt || 0 };
+  }
+  const first = value && typeof value === 'object' ? ensureTrip(value) : blankTrip();
+  return { version: LIBRARY_VERSION, activeTripId: first.id, trips: [first], createdAt: first.createdAt || Date.now(), updatedAt: first.updatedAt || 0 };
+}
+
+function activeTripFromLibrary(library) {
+  const lib = toTripLibrary(library);
+  return lib.trips.find(t => t.id === lib.activeTripId) || lib.trips[0] || blankTrip();
+}
+
+function updateActiveTripInLibrary(library, trip) {
+  const lib = toTripLibrary(library);
+  const next = ensureTrip({ ...trip, id: trip?.id || lib.activeTripId });
+  const trips = lib.trips.some(t => t.id === next.id) ? lib.trips.map(t => t.id === next.id ? next : t) : [...lib.trips, next];
+  return { ...lib, activeTripId: next.id, trips };
+}
+
 function blankTrip() {
-  return { destination: 'Tokyo', arrivalDate: '', nights: 0, anchors: [], prefs: [], anchoredPlaces: [], taste: { likes: [], dislikes: [] }, createdAt: Date.now() };
+  return { id: newTripId(), destination: 'Tokyo', arrivalDate: '', nights: 0, anchors: [], prefs: [], anchoredPlaces: [], taste: { likes: [], dislikes: [] }, createdAt: Date.now() };
 }
 
 function summarizeTrip(trip) {

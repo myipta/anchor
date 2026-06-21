@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles/global.css';
 import { API } from './api/client.js';
 import { addDays, daysBetween, fmtDate, fmtDateLong, fmtMonthYear, todayStr } from './lib/dates.js';
-import { blankTrip, loadChat, loadTrip, saveChat, saveTrip, tripNeedsSetup } from './state/trip.js';
+import { activeTripFromLibrary, blankTrip, createTripFrom, isTripLibrary, loadChat, loadTrip, saveChat, saveTrip, switchActiveTrip, toTripLibrary, tripNeedsSetup, tripTitle, updateActiveTrip } from './state/trip.js';
 
 /* ── DATA ── */
 const CATS = {
@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 11 · Jun 21';
+const BUILD='build 12 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -884,7 +884,7 @@ function OnboardingFlow({onComplete,initialData}){
 const segBase={border:'none',background:'transparent',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'6px 14px',borderRadius:999,cursor:'pointer',transition:'all .15s'};
 const segOn={...segBase,background:'#fff',color:'#16172A',boxShadow:'0 1px 3px rgba(22,23,42,0.14)'};
 
-function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab}){
+function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],activeTripId,onSwitchTrip,onCreateTrip,onEditTrip,goTab}){
   const today=todayStr();
   const dayIndex=trip.arrivalDate?daysBetween(trip.arrivalDate,today):0;
   const totalNights=trip.nights||4;
@@ -946,6 +946,17 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
     </button>
   );
 
+  const TripSwitcher=()=> !tripList.length?null:(
+    <div style={{display:'flex',alignItems:'center',gap:8,marginTop:12}}>
+      <select aria-label="Choose trip" value={activeTripId||trip.id||''} onChange={e=>onSwitchTrip&&onSwitchTrip(e.target.value)} style={{minWidth:0,flex:1,height:40,border:'1px solid #E3E5F0',borderRadius:12,background:'#fff',padding:'0 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,fontWeight:700,color:'#16172A',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+        {tripList.map(t=><option key={t.id} value={t.id}>{tripTitle(t)}</option>)}
+      </select>
+      <button onClick={onCreateTrip} aria-label="Create trip" style={{width:40,height:40,borderRadius:12,border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  );
+
   // Taste-based finds (from Discover's "Optimize my search") surfaced on Today too.
   const tasteFinds=(trip.discovered||[]).filter(p=>!(trip.scratchpad||[]).some(s=>s.sourceId===p.id)&&!(trip.dismissedPlaces||[]).includes(p.id)).slice(0,8);
   const TasteStrip=()=> tasteFinds.length===0?null:(
@@ -998,17 +1009,20 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
     const daysAway=-dayIndex;
     return(
       <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
-        <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div>
-            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination}</div>
-            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>Coming soon</div>
+        <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination}</div>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>Coming soon</div>
+            </div>
+            <EditBtn/>
           </div>
-          <EditBtn/>
+          <TripSwitcher/>
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{padding:'40px 24px 32px',textAlign:'center',background:'linear-gradient(180deg,#F1EEFF 0%,#FAFAFD 100%)'}}>
             <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:88,color:'#6C5CE7',lineHeight:1}}>{daysAway}</div>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:18,color:'#353756',fontWeight:600,marginTop:4}}>{daysAway===1?'day':'days'} until Tokyo</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:18,color:'#353756',fontWeight:600,marginTop:4}}>{daysAway===1?'day':'days'} until {trip.destination||'your trip'}</div>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginTop:8}}>{trip.arrivalDate&&fmtDateLong(trip.arrivalDate)} → {trip.departureDate&&fmtDateLong(trip.departureDate)}</div>
             <div style={{display:'inline-block',marginTop:14,background:'#fff',borderRadius:12,padding:'8px 16px',fontFamily:"'Geist Mono',monospace",fontSize:13,color:'#6C5CE7',fontWeight:600,boxShadow:'0 2px 8px rgba(22,23,42,0.08)'}}>{trip.nights} nights · {trip.anchors?.length||0} anchor{trip.anchors?.length!==1?'s':''}</div>
           </div>
@@ -1030,7 +1044,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
           <div style={{padding:'8px 18px 36px'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:12}}>While you wait, explore what's waiting:</div>
             <button onClick={()=>goTab&&goTab('discover')} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
-              <SparkleIco size={18}/> Browse Tokyo picks
+              <SparkleIco size={18}/> Browse {trip.destination||'trip'} picks
             </button>
           </div>
         </div>
@@ -1040,16 +1054,19 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
 
   if(isPostTrip) return(
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column'}}>
-      <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <div>
-          <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> Tokyo wrapped ✈</div>
-          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>{trip.arrivalDate&&fmtMonthYear(trip.arrivalDate)}</div>
+      <div style={{flexShrink:0,padding:'20px 18px 14px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination||'Trip'} wrapped ✈</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>{trip.arrivalDate&&fmtMonthYear(trip.arrivalDate)}</div>
+          </div>
+          <EditBtn/>
         </div>
-        <EditBtn/>
+        <TripSwitcher/>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'48px 24px',textAlign:'center'}}>
         <div style={{fontSize:56,marginBottom:14}}>🎌</div>
-        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:28,color:'#16172A'}}>Tokyo's a wrap!</div>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:800,fontSize:28,color:'#16172A'}}>{trip.destination||'Trip'}'s a wrap!</div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#9092AD',marginTop:8}}>{trip.nights} nights · {trip.anchors?.length||0} anchor{trip.anchors?.length!==1?'s':''}</div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#9092AD',marginTop:4}}>{trip.arrivalDate&&fmtDateLong(trip.arrivalDate)} – {trip.departureDate&&fmtDateLong(trip.departureDate)}</div>
         <button onClick={onEditTrip} style={{marginTop:32,background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px 28px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,cursor:'pointer',boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>Plan another trip →</button>
@@ -1072,6 +1089,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,onEditTrip,goTab
             </button>
           </div>
         </div>
+        <TripSwitcher/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>
             <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>{trip.arrivalDate&&fmtDateLong(addDays(trip.arrivalDate,viewDay))}</span> · {dayStops.length} stops
@@ -2652,13 +2670,17 @@ function BottomNav({tab,setTab}) {
 /* ── APP ── */
 function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const bootRaw=(initialTrip!==undefined?initialTrip:loadTrip());
-  const [trip,setTrip]=useState(()=> bootRaw || blankTrip());
+  const bootLibrary=toTripLibrary(bootRaw);
+  const [tripLibrary,setTripLibrary]=useState(()=> bootLibrary);
+  const trip=activeTripFromLibrary(tripLibrary)||blankTrip();
+  const tripList=tripLibrary.trips||[];
+  const activeTripId=tripLibrary.activeTripId;
   const [editingTrip,setEditingTrip]=useState(false);
   const [onbPhase,setOnbPhase]=useState('chat'); // 'chat' | 'form' (legacy edit form)
   const [formInit,setFormInit]=useState(null);
   // New / not-yet-set-up trips land in the concierge (Search) so setup happens
   // through conversation; returning users land on Today.
-  const [tab,setTab]=useState(tripNeedsSetup(bootRaw)?'search':'today');
+  const [tab,setTab]=useState(tripNeedsSetup(activeTripFromLibrary(bootLibrary))?'search':'today');
   const [layout,setLayout]=useState('A');
   const [filter,setFilter]=useState('all');
   const [added,setAdded]=useState({});
@@ -2697,9 +2719,35 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   },[]); // eslint-disable-line
 
   // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
-  const persist=nt=>{const t={...nt,updatedAt:Date.now()};saveTrip(t);setTrip(t);onCloudSync&&onCloudSync(t);};
-  // Persist a freshly bootstrapped blank trip so a reload keeps it.
-  useEffect(()=>{ if(!loadTrip()&&trip) saveTrip(trip); },[]); // eslint-disable-line
+  const persistLibrary=React.useCallback(lib=>{
+    const next={...toTripLibrary(lib),updatedAt:Date.now()};
+    saveTrip(next); setTripLibrary(next); onCloudSync&&onCloudSync(next);
+  },[onCloudSync]);
+  const persist=nt=>{
+    const t={...nt,updatedAt:Date.now()};
+    persistLibrary(updateActiveTrip(tripLibrary,t));
+  };
+  // Persist a freshly bootstrapped blank trip, and migrate legacy single-trip
+  // local/cloud blobs into the trip-library shape without losing data.
+  useEffect(()=>{
+    const local=loadTrip();
+    if(!local||!isTripLibrary(local)){
+      saveTrip(tripLibrary);
+      if(local&&onCloudSync) onCloudSync(tripLibrary);
+    }
+  },[]); // eslint-disable-line
+  const changeActiveTrip=id=>{
+    const next=switchActiveTrip(tripLibrary,id);
+    if(next.activeTripId===tripLibrary.activeTripId) return;
+    persistLibrary(next); setStack([]); setAdded({});
+    setTab(tripNeedsSetup(activeTripFromLibrary(next))?'search':'today');
+  };
+  const createTrip=()=>{
+    const destination=String(window.prompt('Where are you going next?','New York')||'').trim();
+    if(!destination) return;
+    const next=createTripFrom(tripLibrary,trip,{destination});
+    persistLibrary(next); setStack([]); setAdded({}); setTab('search');
+  };
   // Concierge conversation lives in App (survives tab switches) + localStorage
   // (survives reload), so it isn't lost when the Search tab unmounts.
   const [convo,setConvo]=useState(()=>loadChat());
@@ -2854,7 +2902,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
+        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} tripList={tripList} activeTripId={activeTripId} onSwitchTrip={changeActiveTrip} onCreateTrip={createTrip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
