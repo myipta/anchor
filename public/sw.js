@@ -1,9 +1,8 @@
 // Anchor service worker — offline app shell + safe runtime caching.
 // Bump CACHE on any shell change to force an update.
-const CACHE = 'anchor-v2';
+const CACHE = 'anchor-v3';
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest',
-  '/vendor/react.min.js', '/vendor/react-dom.min.js', '/vendor/babel.min.js',
   '/icon-192.png', '/icon-512.png', '/icon-180.png',
 ];
 

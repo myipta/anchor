@@ -1,6 +1,6 @@
 # Anchor — API setup
 
-The app (`index.html`) is a static React page. The `/functions` directory adds
+The app is a Vite-built React app (`src/main.jsx` → `dist/`). The `/functions` directory adds
 a small serverless API that runs on **Cloudflare Pages Functions** — same domain
 as the app, no separate server. Your API keys live as **encrypted environment
 variables in Cloudflare**, never in the code or the git repo.
@@ -41,7 +41,8 @@ them server-side at request time.
 
 ```bash
 cp .dev.vars.example .dev.vars   # then paste your real keys (.dev.vars is gitignored)
-npx wrangler pages dev .         # serves index.html + /functions at http://localhost:8788
+npm run dev                  # Vite frontend dev server
+npx wrangler dev              # Worker/API dev server
 ```
 
 Test the endpoints:
@@ -76,7 +77,7 @@ const res = await fetch('/api/suggest', {
 const { ranked } = await res.json(); // [{ id, score, reason }]
 ```
 
-Because the API is same-origin, there are no CORS or key-exposure concerns.
+In production the API is same-origin. In local dev, use the built app or proxy setup if you need same-origin behavior.
 
 ## Accounts & saved trips (Cloudflare D1)
 

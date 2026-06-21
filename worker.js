@@ -1,6 +1,6 @@
 // Anchor Worker entry point.
 //
-// Static files in ./public are served automatically by the assets binding
+// Static files in ./dist are served automatically by the assets binding
 // (configured in wrangler.jsonc). This script only runs for requests that
 // DON'T match a static asset — so we route /api/* here and let everything
 // else fall through to the assets handler.
@@ -18,6 +18,7 @@ import { onRequest as near } from './functions/api/near.js';
 import { onRequest as refine } from './functions/api/refine.js';
 import { onRequest as photo } from './functions/api/photo.js';
 import { onRequest as search } from './functions/api/search.js';
+import { onRequest as searchchat } from './functions/api/searchchat.js';
 import { onRequest as concierge } from './functions/api/concierge.js';
 import { onRequest as tabelog } from './functions/api/tabelog.js';
 import { onRequest as authRequestCode } from './functions/api/auth-request-code.js';
@@ -30,7 +31,7 @@ import { getUser, unauthorized } from './functions/api/_auth.js';
 // Costly, model/scraper-backed endpoints: require a logged-in (approved) session
 // so account-less callers can't run up the API bill. Auth + health stay open.
 const PROTECTED = new Set([
-  '/api/concierge', '/api/tabelog', '/api/suggest', '/api/search', '/api/near',
+  '/api/concierge', '/api/tabelog', '/api/suggest', '/api/search', '/api/searchchat', '/api/near',
   '/api/optimize', '/api/chat', '/api/refine', '/api/parse-place', '/api/places', '/api/photo',
 ]);
 
@@ -45,6 +46,7 @@ const ROUTES = {
   '/api/refine': refine,
   '/api/photo': photo,
   '/api/search': search,
+  '/api/searchchat': searchchat,
   '/api/concierge': concierge,
   '/api/tabelog': tabelog,
   '/api/auth/request-code': authRequestCode,
@@ -66,7 +68,7 @@ export default {
       }
       return handler({ request, env });
     }
-    // Not an API route → serve a static asset (index.html, /vendor/*, …).
+    // Not an API route → serve a static asset (index.html, hashed Vite assets, icons, …).
     return env.ASSETS.fetch(request);
   },
 };

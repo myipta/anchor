@@ -2,8 +2,13 @@
   "name": "anchor",
   "version": "1.0.0",
   "private": true,
-  "description": "Anchor — Tokyo trip concierge. iOS wrapper (Capacitor) around the web app in ./public.",
+  "description": "Anchor — Tokyo trip concierge. Vite React web app wrapped for iOS via Capacitor.",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "npm run build && node scripts/check-backend.mjs && node scripts/check-routes.mjs",
+    "deploy": "npm run build && npx wrangler deploy",
     "ios:add": "cap add ios",
     "ios:sync": "cap sync ios",
     "ios:open": "cap open ios",
@@ -12,9 +17,14 @@
   "dependencies": {
     "@capacitor/app": "^6.0.2",
     "@capacitor/core": "^6.2.0",
-    "@capacitor/ios": "^6.2.0"
+    "@capacitor/ios": "^6.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.2.0"
+    "@capacitor/cli": "^6.2.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.16",
+    "wrangler": "^4.103.0"
   }
 }

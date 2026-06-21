@@ -1,0 +1,19 @@
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;height:100dvh;overflow:hidden;overscroll-behavior:none;touch-action:pan-y;-webkit-text-size-adjust:100%}
+body{font-family:'Hanken Grotesk',sans-serif;background:#FAFAFD;display:flex;justify-content:center}
+@media(min-width:600px){body{background:#DDE0EB}}
+#root{width:100%;max-width:100%;background:#FAFAFD;position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;padding-top:env(safe-area-inset-top)}
+@media(min-width:600px){#root{width:430px;left:50%;right:auto;transform:translateX(-50%)}}
+/* iOS Safari shows a floating bottom address bar that overlays content and is
+   NOT covered by safe-area-inset-bottom. Reserve extra space, but only in a
+   mobile browser tab — installed PWAs (display-mode:standalone) don't need it. */
+:root{--safari-inset:0px}
+@media(display-mode:browser) and (max-width:600px){:root{--safari-inset:40px}}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none;-ms-overflow-style:none}
+button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
+input,textarea{font-family:'Hanken Grotesk',sans-serif}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes photoIn{from{opacity:0}to{opacity:1}}
+@keyframes anchorBlink{0%,100%{opacity:.3}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){@keyframes slideIn{from{transform:none}to{transform:none}}}

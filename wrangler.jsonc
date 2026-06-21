@@ -1,7 +1,8 @@
 {
-  // Cloudflare Worker config. The Git integration runs `npx wrangler deploy`,
-  // which bundles worker.js (+ its ./functions imports) and uploads ./public
-  // as static assets. API keys are set as encrypted vars in the dashboard,
+  // Cloudflare Worker config. The Git integration must run
+  // `npm run build && npx wrangler deploy`, which bundles worker.js
+  // (+ its ./functions imports) and uploads ./dist as static assets.
+  // API keys are set as encrypted vars in the dashboard,
   // never here.
   "name": "anchor",
   "main": "worker.js",
@@ -17,7 +18,7 @@
     "AUTH_ALLOWLIST": "matthew.yip2011@gmail.com,myip2009@gmail.com,lily.chong99@gmail.com"
   },
   "assets": {
-    "directory": "./public",
+    "directory": "./dist",
     "binding": "ASSETS"
   },
   // Accounts + cloud sync. Tables auto-create on first auth call (ensureSchema),

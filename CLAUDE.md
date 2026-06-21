@@ -4,18 +4,14 @@ Anchor is a **Tokyo trip concierge**: a chat-first web app (Claude/DeepSeek "Tok
 local" that recommends real places, learns taste, plans days) wrapped as an
 **iOS app** via Capacitor. Live at **https://anchor.mattyip.dev**.
 
-## How it deploys (no build step)
-- `git push` to **main** → Cloudflare auto-runs `npx wrangler deploy` → live in ~1–2 min.
-- Static site is `./public` (uploaded as-is). Worker is `worker.js` + `./functions/api/*`.
+## How it deploys (build step)
+- `git push` to **main** → Cloudflare must run `npm run build && npx wrangler deploy` → live in ~1–2 min.
+- Vite builds the React app to `./dist`; Worker is `worker.js` + `./functions/api/*`.
 - After pushing, verify with `https://anchor.mattyip.dev/api/health`. (This sandbox
   can't reach the live site — egress is allowlisted — so the user pastes results.)
 
 ## Architecture
-- **Frontend**: a single file `public/index.html` — React via **in-browser Babel**
-  (no bundler). ~3k lines, ~35 components. Inline-style CSS. State in `localStorage`
-  (`anchor_v1` = trip, `anchor_chat` = concierge convo). Validate edits by extracting
-  the `text/babel` block and running it through `@babel/standalone` (a helper script
-  was used as `/tmp/checkbabel.js`).
+- **Frontend**: Vite + React in `src/main.jsx` with global shell CSS in `src/styles/global.css`. This pass intentionally keeps the old app mostly as one near-verbatim entry module; split into `api/state/screens/components/lib` only after the WebView build is proven. State stays in `localStorage` (`anchor_v1` = trip, `anchor_chat` = concierge convo). Validate with `npm run check`.
 - **Backend**: `worker.js` hand-routes `/api/*` to `functions/api/*.js` via a `ROUTES`
   map. **Any new endpoint MUST be added to `worker.js` ROUTES** (this bit us twice).
   `functions/api/_*.js` are import-only (not routed): `_lib.js` (json/callDeepSeek/
@@ -67,7 +63,7 @@ local" that recommends real places, learns taste, plans days) wrapped as an
 - **`server.url` means web changes need NO native rebuild** — but the WebView caches,
   so to see changes: Simulator → delete app → ⌘R (or we bust cache). Native config
   changes (`capacitor.config.json`) need `git pull && npx cap sync ios` + ⌘R.
-- A visible **`BUILD` stamp** (const near top of `index.html`, shown on login +
+- A visible **`BUILD` stamp** (const near top of `src/main.jsx`, shown on login +
   concierge header) confirms which page loaded. **Bump it each notable change.**
 - WebView is not a real Safari tab → the `--safari-inset` (for Safari's floating URL
   bar) is zeroed when UA lacks `Version/`.
@@ -90,5 +86,4 @@ local" that recommends real places, learns taste, plans days) wrapped as an
 
 ## Conventions
 - Match the surrounding terse, inline-style code. Keep endpoints fail-soft.
-- Always `node --check` backend files and run the babel check on `index.html` before
-  committing. Commit + push only when the user asks (they usually say "push").
+- Always run `npm run check` before committing. Commit + push only when the user asks (they usually say "push").

@@ -1,104 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#FAFAFD">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Anchor">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/icon-180.png">
-<link rel="icon" type="image/png" href="/icon-192.png">
-<title>Anchor</title>
-<script>
-// PWA: register the service worker (offline shell), request durable storage so
-// iOS can't evict the user's trip, and nudge iOS Safari users to install.
-(function(){
-  if('serviceWorker' in navigator){
-    window.addEventListener('load',function(){
-      navigator.serviceWorker.register('/sw.js').catch(function(){});
-    });
-  }
-  if(navigator.storage&&navigator.storage.persist){ navigator.storage.persist().catch(function(){}); }
-
-  // The Safari floating URL bar only exists in a real Safari browser tab, whose
-  // user-agent contains "Version/". A WebView (Capacitor app / installed PWA)
-  // has no "Version/" — there, zero the inset so the bottom nav doesn't get a
-  // nav-bar of dead space. (UA is available instantly, unlike window.Capacitor.)
-  var isSafariTab = /Version\/\d/.test(navigator.userAgent);
-  var inCapacitor = !!window.Capacitor;
-  if(!isSafariTab){ document.documentElement.style.setProperty('--safari-inset','0px'); }
-
-  // One-time "Add to Home Screen" tip — only on a real iOS Safari tab.
-  try{
-    var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone || inCapacitor || !isSafariTab;
-    var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
-    if(isIOS && !standalone && !localStorage.getItem('a2hs_dismissed')){
-      window.addEventListener('load',function(){
-        var bar=document.createElement('div');
-        bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9999;background:#16172A;color:#fff;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 30px rgba(22,23,42,0.35);font-family:\'Hanken Grotesk\',sans-serif;font-size:13.5px;line-height:1.4';
-        bar.innerHTML='<span style="font-size:20px">⚓</span><span style="flex:1">Install Anchor: tap <b>Share</b> then <b>Add to Home Screen</b> — full-screen, offline, and your data stays put.</span>';
-        var x=document.createElement('button');
-        x.textContent='✕'; x.setAttribute('aria-label','Dismiss');
-        x.style.cssText='flex-shrink:0;border:none;background:rgba(255,255,255,0.14);color:#fff;border-radius:9px;width:28px;height:28px;font-size:13px;cursor:pointer';
-        x.onclick=function(){ localStorage.setItem('a2hs_dismissed','1'); bar.remove(); };
-        bar.appendChild(x); document.body.appendChild(bar);
-      });
-    }
-  }catch(e){}
-  (function(){
-    var root=null;
-    function vvFix(){
-      if(!root) root=document.getElementById('root');
-      if(!root||!window.visualViewport) return;
-      var vv=window.visualViewport;
-      root.style.height=vv.height+'px';
-      root.style.top=vv.offsetTop+'px';
-      root.style.bottom='auto';
-    }
-    if(window.visualViewport){
-      window.visualViewport.addEventListener('resize',vvFix);
-      window.visualViewport.addEventListener('scroll',vvFix);
-      vvFix();
-    }
-    window.addEventListener('scroll',function(){window.scrollTo(0,0);});
-  })();
-})();
-</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="vendor/react.min.js"></script>
-<script src="vendor/react-dom.min.js"></script>
-<script src="vendor/babel.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;height:100dvh;overflow:hidden;overscroll-behavior:none;touch-action:pan-y;-webkit-text-size-adjust:100%}
-body{font-family:'Hanken Grotesk',sans-serif;background:#FAFAFD;display:flex;justify-content:center}
-@media(min-width:600px){body{background:#DDE0EB}}
-#root{width:100%;max-width:100%;background:#FAFAFD;position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;padding-top:env(safe-area-inset-top)}
-@media(min-width:600px){#root{width:430px;left:50%;right:auto;transform:translateX(-50%)}}
-/* iOS Safari shows a floating bottom address bar that overlays content and is
-   NOT covered by safe-area-inset-bottom. Reserve extra space, but only in a
-   mobile browser tab — installed PWAs (display-mode:standalone) don't need it. */
-:root{--safari-inset:0px}
-@media(display-mode:browser) and (max-width:600px){:root{--safari-inset:40px}}
-::-webkit-scrollbar{width:0;height:0}
-*{scrollbar-width:none;-ms-overflow-style:none}
-button{font-family:'Hanken Grotesk',sans-serif;cursor:pointer}
-input,textarea{font-family:'Hanken Grotesk',sans-serif}
-@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
-@keyframes photoIn{from{opacity:0}to{opacity:1}}
-@keyframes anchorBlink{0%,100%{opacity:.3}50%{opacity:1}}
-@media(prefers-reduced-motion:reduce){@keyframes slideIn{from{transform:none}to{transform:none}}}
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const {useState,useMemo,useEffect} = React;
+import React, { useState, useMemo, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+import './styles/global.css';
 
 /* ── DATA ── */
 const CATS = {
@@ -3191,7 +3093,4 @@ function Root(){
     onCloudSync={cloud&&user?onCloudSync:null} onLogout={cloud&&user?onLogout:null} onSignIn={cloud&&!user?onSignIn:null}/>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
-</script>
-</body>
-</html>
+createRoot(document.getElementById('root')).render(<Root/>);

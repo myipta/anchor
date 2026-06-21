@@ -1,3 +1,4 @@
+.DS_Store
 public/vendor/node_modules/
 public/vendor/package.json
 public/vendor/package-lock.json
@@ -9,4 +10,4 @@ node_modules/
 
 # Capacitor / iOS (generated locally on a Mac via `npx cap add ios`)
 ios/
-package-lock.json
+dist/

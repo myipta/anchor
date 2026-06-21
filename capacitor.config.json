@@ -1,7 +1,7 @@
 {
   "appId": "dev.mattyip.anchor",
   "appName": "Anchor",
-  "webDir": "public",
+  "webDir": "dist",
   "server": {
     "url": "https://anchor.mattyip.dev",
     "cleartext": false
