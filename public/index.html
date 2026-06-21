@@ -53,12 +53,15 @@
     function vvFix(){
       if(!root) root=document.getElementById('root');
       if(!root||!window.visualViewport) return;
-      var kbH=Math.max(0,window.innerHeight-window.visualViewport.height-window.visualViewport.offsetTop);
-      root.style.bottom=kbH+'px';
+      var vv=window.visualViewport;
+      root.style.height=vv.height+'px';
+      root.style.top=vv.offsetTop+'px';
+      root.style.bottom='auto';
     }
     if(window.visualViewport){
       window.visualViewport.addEventListener('resize',vvFix);
       window.visualViewport.addEventListener('scroll',vvFix);
+      vvFix();
     }
     window.addEventListener('scroll',function(){window.scrollTo(0,0);});
   })();
@@ -186,7 +189,7 @@ function fmtMonthYear(d){return new Date(d+'T00:00:00').toLocaleDateString('en-U
 function loadState(){try{return JSON.parse(localStorage.getItem('anchor_v1')||'null');}catch{return null;}}
 function saveState(s){localStorage.setItem('anchor_v1',JSON.stringify(s));}
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 7 · Jun 20';
+const BUILD='build 8 · Jun 20';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -2856,6 +2859,14 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const [filter,setFilter]=useState('all');
   const [added,setAdded]=useState({});
   const [stack,setStack]=useState([]);
+  const [kbOpen,setKbOpen]=useState(false);
+  useEffect(()=>{
+    const vv=window.visualViewport; if(!vv) return;
+    let base=vv.height;
+    const onVV=()=>{ base=Math.max(base,vv.height); setKbOpen(base-vv.height>120); };
+    vv.addEventListener('resize',onVV);
+    return ()=>vv.removeEventListener('resize',onVV);
+  },[]);
 
   // Browser-history integration so the device Back button does in-app back.
   // Push one history entry per forward nav (overlay open / tab change); a
@@ -3059,7 +3070,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
           </button>
         )}
       </div>
-      {stack.length===0&&<BottomNav tab={tab} setTab={changeTab}/>}
+      {stack.length===0&&!kbOpen&&<BottomNav tab={tab} setTab={changeTab}/>}
     </div>
   );
 }
