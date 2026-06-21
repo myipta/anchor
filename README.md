@@ -23,3 +23,7 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 - `README.md` — this file
 - `chats/` — conversation transcripts (read these!)
 - `project/` — the `Anchor` project files (HTML prototypes, assets, components)
+
+## Current Engineering Notes
+
+- Restaurant recommendation cards must exclude lodging results. `/api/tabelog` filters hotel/lodging/hostel/ryokan-style categories and the current stay before returning cards, and the Search UI removes existing lodging cards when the traveler says things like “no hotels.” Keep this deterministic; do not rely only on LLM taste-ranking for exclusion.

@@ -45,10 +45,10 @@ export const API = {
       return {reply:d.reply||'',recommend:!!d.recommend,search:d.search||'',area:d.area||'',learned:d.learned||{likes:[],dislikes:[]},updates:d.updates||{},chips:Array.isArray(d.chips)?d.chips:[]};
     }catch{return {error:'network',reply:'Could not reach me just now — try again in a moment.',learned:{likes:[],dislikes:[]},updates:{},chips:[]};}
   },
-  async tabelog(query,area,taste,prefs,saved){
+  async tabelog(query,area,taste,prefs,saved,excludeNames=[]){
     try{
       const r=await fetch('/api/tabelog',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({query,area,taste,prefs,saved})});
+        body:JSON.stringify({query,area,taste,prefs,saved,excludeNames})});
       const d=await r.json();
       if(!r.ok) return {places:[],source:null};
       return {places:Array.isArray(d.places)?d.places:[],source:d.source||null};

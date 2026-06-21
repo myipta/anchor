@@ -47,6 +47,10 @@ local" that recommends real places, learns taste, plans days) wrapped as an
   stream in. Learns taste (deduped via `mergeTags`), gathers trip setup inline.
 - Recommendation source = **Google Places** (`/api/tabelog` is Google-first; it
   respects the query and deep-links to the Maps app reliably).
+- Restaurant cards must exclude lodging deterministically: `/api/tabelog` filters
+  hotel/lodging/hostel/ryokan-style categories and the current stay before returning
+  cards. The Search UI also removes already-rendered lodging cards when the traveler
+  says “no hotels.” Do not rely only on LLM taste-ranking for this exclusion.
 - **Tabelog is effectively read-only search by name**: Tabelog 403s our server
   scrape, and the `parseforge~tabelog-scraper` Apify actor has **no search field**
   (only city/areaCode/maxItems — see `/api/health?actor=1`). So we can't get a

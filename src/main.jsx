@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 8 · Jun 20';
+const BUILD='build 10 · Jun 21';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -1888,6 +1888,14 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   useEffect(()=>{ if(busy&&scrollRef.current) scrollRef.current.scrollTo({top:scrollRef.current.scrollHeight,behavior:'smooth'}); },[busy]);
 
   const curatedName=id=>(typeof PLACES!=='undefined'&&PLACES[id]&&PLACES[id].name)||null;
+  const looksLikeLodgingPlace=p=>{
+    const category=String(p?.category||p?.catLabel||'').toLowerCase();
+    const name=String(p?.name||'').toLowerCase();
+    const lodging=/\b(hotel|lodging|hostel|ryokan|inn|resort|guest\s*house|capsule\s*hotel|accommodation|serviced\s*apartment)\b/.test(category+' '+name);
+    if(!lodging) return false;
+    return !/\b(restaurant|bar|cafe|coffee|dining|bistro|izakaya|sushi|ramen|yakitori|yakiniku|kaiseki|omakase|tempura|tonkatsu|soba|udon|bakery|dessert)\b/.test(category);
+  };
+  const asksNoHotels=text=>/\b(no|not|avoid|exclude|skip|hide|remove|without|don'?t|do not)\b.{0,28}\b(hotels?|lodging|stays?|accommodation)\b/i.test(text)||/\b(hotels?|lodging|stays?|accommodation)\b.{0,18}\b(no|never|avoid|exclude|skip|hide|remove)\b/i.test(text);
   const context=()=>({
     taste:trip.taste||{likes:[],dislikes:[]},
     prefs:trip.prefs||[],
@@ -1900,7 +1908,13 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
     const hist=[...msgs,{role:'user',text}].slice(-16).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-    setMsgs(m=>[...(m||[]),{role:'user',text}]); setInput(''); setBusy(true);
+    const noHotels=asksNoHotels(text);
+    setMsgs(m=>[...(m||[]),{role:'user',text}]);
+    if(noHotels){
+      onLearn&&onLearn([],['hotels','lodging']);
+      setMsgs(m=>(m||[]).map(x=>x.places?{...x,places:x.places.filter(p=>!looksLikeLodgingPlace(p))}:x));
+    }
+    setInput(''); setBusy(true);
     const ctx=context();
     const res=await API.concierge(hist,ctx,model);
     setBusy(false);
@@ -1923,9 +1937,11 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
       const q=(res.search||text).trim();
       // Exclude saved, previously-skipped, and anything already shown this chat.
       const shown=(msgs||[]).flatMap(x=>(x.places||[]).map(p=>p.name)).filter(Boolean);
-      const saved=[...(ctx.anchored||[]),...(ctx.ideas||[]),...(trip.skippedRecs||[]),...shown];
-      const tr=await API.tabelog(q,res.area||hotelArea,trip.taste||{likes:[],dislikes:[]},trip.prefs||[],saved);
-      const got=tr.places||[];
+      const hotelExclusions=[hotelName,...((trip.anchors||[]).map(a=>a&&a.name))].filter(Boolean);
+      const saved=[...(ctx.anchored||[]),...(ctx.ideas||[]),...(trip.skippedRecs||[]),...shown,...hotelExclusions];
+      const effectiveTaste=noHotels?{...(trip.taste||{likes:[],dislikes:[]}),dislikes:mergeTags((trip.taste&&trip.taste.dislikes)||[],['hotels','lodging'])}:(trip.taste||{likes:[],dislikes:[]});
+      const tr=await API.tabelog(q,res.area||hotelArea,effectiveTaste,trip.prefs||[],saved,hotelExclusions);
+      const got=(tr.places||[]).filter(p=>!looksLikeLodgingPlace(p));
       setMsgs(m=>(m||[]).map(x=>x.id===mid?(got.length
         ? {...x,places:got,loadingCards:false,source:tr.source}
         // No results (often: exhausted the pool after filtering) — be honest, not a phantom batch.
@@ -1943,7 +1959,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
     if(type==='save'){ onStash&&onStash(p,'idea'); label='Saved to your scratchpad'; }
     else if(type==='anchor'){ onStash&&onStash(p,'anchored'); label='Anchored — I’ll build around it'; }
     else if(type==='like'){ if(p.category) onLearn&&onLearn([p.category],[]); onStash&&onStash(p,'idea'); label="Saved to scratchpad · I'll find more like this"; }
-    else if(type==='dislike'){ onSkipRec&&onSkipRec(p.name); label='Got it — skipping this and similar'; }
+    else if(type==='dislike'){ onSkipRec&&onSkipRec(p.name); if(looksLikeLodgingPlace(p)) onLearn&&onLearn([],['hotels','lodging']); label='Got it — skipping this and similar'; }
     else { onSkipRec&&onSkipRec(p.name); label='Skipped — I won’t show it again'; }
     setConvo&&setConvo(prev=>(prev||[]).map(x=>x.id===mid?{...x,acted:{...(x.acted||{}),[j]:{type,label}}}:x));
   };

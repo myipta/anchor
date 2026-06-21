@@ -21,7 +21,9 @@ export async function onRequest(context) {
   const area = (body.area || '').toString().trim();
   const taste = (body.taste && typeof body.taste === 'object') ? body.taste : {};
   const prefs = Array.isArray(body.prefs) ? body.prefs : [];
-  const savedSet = new Set((Array.isArray(body.saved) ? body.saved : []).map(s => String(s || '').toLowerCase()));
+  const saved = Array.isArray(body.saved) ? body.saved : [];
+  const excludeNames = Array.isArray(body.excludeNames) ? body.excludeNames : [];
+  const blockedNames = [...saved, ...excludeNames].map(normalizeName).filter(Boolean);
 
   let places = [], source = null, tabelogError;
   // Google first: it reliably respects the query (tofu kaiseki != sushi). Tabelog
@@ -43,7 +45,7 @@ export async function onRequest(context) {
     } else { tabelogError = t.error; }
   }
 
-  places = places.filter(p => !savedSet.has(String(p.name || '').toLowerCase()));
+  places = places.filter(p => !isBlockedName(p.name, blockedNames) && !isLodgingPlace(p));
   // Currently-open first when we know it.
   places.sort((a, b) => (a.openNow === 'closed' ? 1 : 0) - (b.openNow === 'closed' ? 1 : 0));
   places = places.slice(0, 5);
@@ -60,4 +62,34 @@ export async function onRequest(context) {
   }
 
   return json({ places, source, tabelogError });
+}
+
+function normalizeName(value) {
+  const s = String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(the|hotel|tokyo|japan|jp)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s || s === 'my stay' || s.length < 4) return '';
+  return s;
+}
+
+function isBlockedName(name, blockedNames) {
+  const n = normalizeName(name);
+  return Boolean(n && blockedNames.some(b => b && (n === b || n.includes(b) || b.includes(n))));
+}
+
+function isLodgingPlace(place) {
+  const category = String(place?.category || place?.catLabel || '').toLowerCase();
+  const name = String(place?.name || '').toLowerCase();
+  const haystack = category + ' ' + name;
+  const lodging = /\b(hotel|lodging|hostel|ryokan|inn|resort|guest\s*house|capsule\s*hotel|accommodation|serviced\s*apartment)\b/.test(haystack);
+  if (!lodging) return false;
+
+  // Keep actual restaurant/bar/cafe venues if Google categorizes them that way;
+  // otherwise a lodging result does not belong in restaurant recommendation cards.
+  const foodCategory = /\b(restaurant|bar|cafe|coffee|dining|bistro|izakaya|sushi|ramen|yakitori|yakiniku|kaiseki|omakase|tempura|tonkatsu|soba|udon|bakery|dessert)\b/.test(category);
+  return !foodCategory;
 }
