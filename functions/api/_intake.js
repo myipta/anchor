@@ -1,4 +1,4 @@
-import { callDeepSeek, extractJson } from './_lib.js';
+import { extractJson } from './_lib.js';
 import { ensureSchema, isAllowed, normalizeEmail } from './_auth.js';
 import { lookupPlace } from './_search.js';
 
@@ -66,16 +66,38 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
 
 async function extractTravelInfo(env, { subject, text, from }) {
   const fallback = fallbackExtract({ subject, text });
-  if (!env.DEEPSEEK_API_KEY) return fallback;
+  if (!env.ANTHROPIC_API_KEY) return fallback;
 
   const system = 'You extract flight and hotel reservation facts from forwarded travel emails. Return ONLY valid JSON. Dates/times should be ISO-like strings when present. If a field is unknown, use an empty string or omit it. Do not invent facts.';
   const user = 'Return this JSON shape:\n' +
     '{"summary":"one short summary","hotel":{"name":"","address":"","area":"Tokyo neighborhood/city if clear","checkinDate":"YYYY-MM-DD","checkoutDate":"YYYY-MM-DD","confirmationNumber":""},"flights":[{"airline":"","flightNumber":"","confirmationNumber":"","departAirport":"IATA or airport name","departCity":"","departAt":"YYYY-MM-DDTHH:mm or date/time text","arriveAirport":"IATA or airport name","arriveCity":"","arriveAt":"YYYY-MM-DDTHH:mm or date/time text","terminal":"","seat":""}]}\n\n' +
     'From: ' + (from || '(unknown)') + '\nSubject: ' + (subject || '(none)') + '\nEmail text:\n' + text.slice(0, MAX_EMAIL_CHARS);
-  const out = await callDeepSeek(env, { system, user, maxTokens: 1100, json: true });
+  const out = await callClaudeSonnet(env, { system, user, maxTokens: 1200 });
   if (out.error) return fallback;
   const parsed = extractJson(out.text);
   return normalizeExtracted(parsed, fallback);
+}
+
+async function callClaudeSonnet(env, { system, user, maxTokens = 1200 }) {
+  const model = env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+  } catch (e) {
+    return { error: 'fetch_failed', detail: String(e).slice(0, 300) };
+  }
+  if (!r.ok) return { error: 'anthropic_error', status: r.status, detail: (await r.text()).slice(0, 500) };
+  const data = await r.json();
+  const text = (data.content || []).map(part => part && part.type === 'text' ? part.text : '').join('').trim();
+  return text ? { text, model } : { error: 'empty_response' };
 }
 
 function normalizeExtracted(parsed, fallback) {
@@ -117,23 +139,28 @@ async function mergeTravelIntoTrip(env, trip, extracted, meta) {
   const hotel = extracted.hotel || null;
   if (hasHotel(hotel)) {
     const anchors = Array.isArray(t.anchors) ? [...t.anchors] : [];
-    const existing = anchors[0] || { id: 'anc-0', name: 'My stay', area: 'Tokyo' };
+    const hotelName = str(hotel.name, 120);
+    const hotelConf = str(hotel.confirmationNumber, 80);
+    const matchIdx = findHotelAnchorIndex(anchors, hotelName, hotelConf);
+    const existing = matchIdx >= 0 ? anchors[matchIdx] : { id: 'anc-' + Date.now(), name: 'My stay', area: 'Tokyo' };
     let enriched = null;
     if (env.GOOGLE_PLACES_API_KEY && hotel.name) enriched = await lookupPlace(env, hotel.name, hotel.area || existing.area || 'Tokyo');
     const checkin = isoDate(hotel.checkinDate) || existing.checkin || t.arrivalDate || '';
     const checkout = isoDate(hotel.checkoutDate) || existing.checkout || t.departureDate || '';
-    anchors[0] = {
+    const mergedAnchor = {
       ...existing,
-      name: hotel.name || existing.name,
+      name: hotelName || existing.name,
       area: hotel.area || enriched?.area || existing.area || 'Tokyo',
       address: hotel.address || enriched?.address || existing.address || '',
       coords: enriched?.coords || existing.coords || '',
       googleUrl: enriched?.googleUrl || existing.googleUrl || '',
       checkin,
       checkout,
-      confirmationNumber: hotel.confirmationNumber || existing.confirmationNumber || '',
+      confirmationNumber: hotelConf || existing.confirmationNumber || '',
       source: 'email',
     };
+    if (matchIdx >= 0) anchors[matchIdx] = mergedAnchor;
+    else anchors.push(mergedAnchor);
     t.anchors = anchors;
     if (checkin) t.arrivalDate = checkin;
     if (checkout) t.departureDate = checkout;
@@ -295,6 +322,27 @@ function normalizeFlightNumber(value) {
 
 function flightKey(f) {
   return [normalizeFlightNumber(f.flightNumber), str(f.departAt, 32), str(f.departAirport, 16), str(f.arriveAirport, 16)].filter(Boolean).join('|').toLowerCase();
+}
+
+function findHotelAnchorIndex(anchors, name, confirmationNumber) {
+  const targetName = normalizeName(name);
+  const targetConf = normalizeName(confirmationNumber);
+  if (targetConf) {
+    const i = anchors.findIndex(a => normalizeName(a.confirmationNumber) === targetConf);
+    if (i >= 0) return i;
+  }
+  if (targetName) {
+    const i = anchors.findIndex(a => {
+      const n = normalizeName(a.name);
+      return n && (n === targetName || n.includes(targetName) || targetName.includes(n));
+    });
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function normalizeName(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function hasHotel(hotel) {

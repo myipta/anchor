@@ -15,7 +15,7 @@ variables in Cloudflare**, never in the code or the git repo.
 | `/api/parse-place` | POST | DeepSeek cleans a messy note / Google-Yelp link into a lookup | `DEEPSEEK_API_KEY`    |
 | `/api/optimize` | POST  | DeepSeek orders a day's stops around hotel, hours & daypart   | `DEEPSEEK_API_KEY`    |
 | `/api/places`  | POST   | Google Places fetches real Tokyo venue data (rating, hours…)  | `GOOGLE_PLACES_API_KEY`|
-| `/api/intake/email` | POST | Parses forwarded travel emails into hotel + flight trip data | `DEEPSEEK_API_KEY` optional |
+| `/api/intake/email` | POST | Claude Sonnet parses forwarded travel emails into hotel + flight trip data | `ANTHROPIC_API_KEY` |
 
 If a key is missing the endpoint returns `503 { error: "missing_key" }` with a
 clear message — the app keeps working on its built-in data.
@@ -140,4 +140,4 @@ so you can sign in locally without email. **Never set `DEV_AUTH` in production.*
 
 ## Email intake
 
-Forward flight and hotel confirmations to `trips@mattyip.dev` from an allowlisted account. Configure Cloudflare Email Routing so that address invokes the `anchor` Worker. The Worker also exposes authenticated `POST /api/intake/email` with `{ "subject": "...", "text": "..." }` for testing. Parsed hotel details update `trip.anchors[0]`; flights are stored in `trip.flights`; import summaries are stored in `trip.travelInbox`.
+Forward flight and hotel confirmations to `trips@mattyip.dev` from an allowlisted account. Configure Cloudflare Email Routing so that address invokes the `anchor` Worker. The Worker also exposes authenticated `POST /api/intake/email` with `{ "subject": "...", "text": "..." }` for testing. Parsed hotel details update a matching hotel anchor by confirmation/name, or append a new hotel anchor if none matches; flights are stored in `trip.flights`; import summaries are stored in `trip.travelInbox`.

@@ -61,9 +61,9 @@ local" that recommends real places, learns taste, plans days) wrapped as an
 
 ## Email intake
 - Goal: forward flight/hotel confirmation emails to `trips@mattyip.dev`; Anchor parses them and merges hotel/dates/flights into the user's saved trip blob.
-- Code paths: Worker `email(message, env, ctx)` for real inbound mail, plus authenticated `POST /api/intake/email` for testing/manual paste. Shared parser/merge logic lives in `functions/api/_intake.js`.
+- Code paths: Worker `email(message, env, ctx)` for real inbound mail, plus authenticated `POST /api/intake/email` for testing/manual paste. Shared parser/merge logic lives in `functions/api/_intake.js`; extraction uses Claude Sonnet (`ANTHROPIC_MODEL` or `claude-sonnet-4-6`), with only a small regex fallback if Claude is unavailable.
 - Cloudflare Email Routing still has to route `trips@mattyip.dev` to this Worker. Sender must be allowlisted; if the user row does not exist yet, inbound mail creates it so the trip is waiting after first login.
-- Imported shape: hotel updates `trip.anchors[0]`, trip dates/nights derive from hotel check-in/out, flights append/dedupe in `trip.flights`, recent imports live in `trip.travelInbox`.
+- Imported shape: hotel updates a matching hotel anchor by confirmation/name, or appends a new hotel anchor if none matches; trip dates/nights derive from hotel check-in/out, flights append/dedupe in `trip.flights`, recent imports live in `trip.travelInbox`.
 
 ## iOS app (Capacitor)
 - Config: `capacitor.config.json` (`appId dev.mattyip.anchor`, `server.url` = live
