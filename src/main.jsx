@@ -86,7 +86,8 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 10 · Jun 21';
+const BUILD='build 11 · Jun 21';
+const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
   {id:'coffee',label:'Specialty coffee',emoji:'☕',cat:'coffee'},
@@ -2140,6 +2141,9 @@ function AnchorDetailOverlay({anchorId,pop,push,trip}){
 /* ── TRIP OVERLAY ── */
 function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
   const today=todayStr();
+  const flights=Array.isArray(trip.flights)?trip.flights:[];
+  const inbox=Array.isArray(trip.travelInbox)?trip.travelInbox:[];
+  const flightTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   const days=Array.from({length:trip.nights||0},(_,i)=>({
     date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
     label:`Day ${i+1}`,
@@ -2165,6 +2169,17 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
           {user&&onLogout&&<button onClick={onLogout} style={{flexShrink:0,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:11,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,padding:'8px 13px',cursor:'pointer'}}>Log out</button>}
           {!user&&onSignIn&&<button onClick={onSignIn} style={{flexShrink:0,border:'none',borderRadius:11,background:'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:600,fontSize:13,padding:'8px 13px',cursor:'pointer'}}>Sign in to sync</button>}
         </div>
+        <div style={{margin:'14px 0 16px',background:'#fff',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+            <div>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,letterSpacing:'0.10em',textTransform:'uppercase',color:'#9092AD'}}>Email import</div>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',marginTop:4}}>Forward flights and hotels</div>
+            </div>
+            <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,color:'#6C5CE7',background:'#F1EEFF',borderRadius:999,padding:'6px 9px',whiteSpace:'nowrap'}}>{INTAKE_EMAIL}</div>
+          </div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.45,marginTop:8}}>Forward airline or hotel confirmation emails from your signed-in address. Anchor will fill your hotel, dates, and flights.</div>
+          {inbox[0]&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#0E865B',marginTop:9}}>Last import: {inbox[0].summary}</div>}
+        </div>
         {trip.anchors&&trip.anchors.length>0&&(
           <>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'6px 0 10px'}}>Hotels</div>
@@ -2174,6 +2189,22 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
                 <div style={{flex:1}}>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{a.name}</div>
                   <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:2}}>{a.area} · {fmtDate(a.checkin)} – {fmtDate(a.checkout)}</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        {flights.length>0&&(
+          <>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Flights</div>
+            {flights.map((f,i)=>(
+              <div key={f.id||i} style={{display:'flex',gap:12,alignItems:'flex-start',padding:'13px 0',borderBottom:'1px solid #ECEDF6'}}>
+                <div style={{width:42,height:42,borderRadius:12,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>✈</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{[f.airline,f.flightNumber].filter(Boolean).join(' ')||'Flight'}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:2}}>{[f.departAirport,f.arriveAirport].filter(Boolean).join(' → ')}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:2}}>{[flightTime(f.departAt),flightTime(f.arriveAt)].filter(Boolean).join(' · ')}</div>
+                  {f.confirmationNumber&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#B6B8CC',marginTop:4}}>CONF {f.confirmationNumber}</div>}
                 </div>
               </div>
             ))}

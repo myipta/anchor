@@ -59,6 +59,12 @@ local" that recommends real places, learns taste, plans days) wrapped as an
   to `tabelog.com/tokyo/`. A search-capable actor (e.g. cloud9_ai) would unlock real
   Tabelog IDs + the `tabelog://rstdtl/{id}` deep-link (helpers already in `index.html`).
 
+## Email intake
+- Goal: forward flight/hotel confirmation emails to `trips@mattyip.dev`; Anchor parses them and merges hotel/dates/flights into the user's saved trip blob.
+- Code paths: Worker `email(message, env, ctx)` for real inbound mail, plus authenticated `POST /api/intake/email` for testing/manual paste. Shared parser/merge logic lives in `functions/api/_intake.js`.
+- Cloudflare Email Routing still has to route `trips@mattyip.dev` to this Worker. Sender must be allowlisted; if the user row does not exist yet, inbound mail creates it so the trip is waiting after first login.
+- Imported shape: hotel updates `trip.anchors[0]`, trip dates/nights derive from hotel check-in/out, flights append/dedupe in `trip.flights`, recent imports live in `trip.travelInbox`.
+
 ## iOS app (Capacitor)
 - Config: `capacitor.config.json` (`appId dev.mattyip.anchor`, `server.url` = live
   site → same-origin auth, auto-updates). Icons/splash source in `./assets`.

@@ -27,3 +27,5 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 ## Current Engineering Notes
 
 - Restaurant recommendation cards must exclude lodging results. `/api/tabelog` filters hotel/lodging/hostel/ryokan-style categories and the current stay before returning cards, and the Search UI removes existing lodging cards when the traveler says things like “no hotels.” Keep this deterministic; do not rely only on LLM taste-ranking for exclusion.
+
+- Email intake imports forwarded itinerary and hotel confirmations into the saved trip. Route `trips@mattyip.dev` to the Worker with Cloudflare Email Routing; sender email must be allowlisted.

@@ -26,13 +26,16 @@ import { onRequest as authVerify } from './functions/api/auth-verify.js';
 import { onRequest as authMe } from './functions/api/auth-me.js';
 import { onRequest as authLogout } from './functions/api/auth-logout.js';
 import { onRequest as trip } from './functions/api/trip.js';
+import { onRequest as intakeEmail } from './functions/api/intake-email.js';
 import { getUser, unauthorized } from './functions/api/_auth.js';
+import { ingestTravelEmail, readEmailMessage, userForInboundEmail } from './functions/api/_intake.js';
 
 // Costly, model/scraper-backed endpoints: require a logged-in (approved) session
 // so account-less callers can't run up the API bill. Auth + health stay open.
 const PROTECTED = new Set([
   '/api/concierge', '/api/tabelog', '/api/suggest', '/api/search', '/api/searchchat', '/api/near',
   '/api/optimize', '/api/chat', '/api/refine', '/api/parse-place', '/api/places', '/api/photo',
+  '/api/intake/email', '/api/intake-email',
 ]);
 
 const ROUTES = {
@@ -54,6 +57,8 @@ const ROUTES = {
   '/api/auth/me': authMe,
   '/api/auth/logout': authLogout,
   '/api/trip': trip,
+  '/api/intake/email': intakeEmail,
+  '/api/intake-email': intakeEmail,
 };
 
 export default {
@@ -70,5 +75,23 @@ export default {
     }
     // Not an API route → serve a static asset (index.html, hashed Vite assets, icons, …).
     return env.ASSETS.fetch(request);
+  },
+
+  async email(message, env, ctx) {
+    if (!env.DB) { message.setReject('Anchor cloud sync is not configured.'); return; }
+    try {
+      const parsed = await readEmailMessage(message);
+      const mapped = await userForInboundEmail(env, parsed.from);
+      if (!mapped.user) { message.setReject('Sender is not approved for Anchor.'); return; }
+      const result = await ingestTravelEmail(env, mapped.user, {
+        subject: parsed.subject,
+        text: parsed.text,
+        from: parsed.from,
+        receivedAt: Date.now(),
+      });
+      if (result.error) message.setReject(result.error);
+    } catch (e) {
+      message.setReject('Anchor could not import this travel email.');
+    }
   },
 };

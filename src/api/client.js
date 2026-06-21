@@ -89,6 +89,14 @@ export const API = {
       return d; // {name, query, area, note, source}
     }catch{return {error:'network'};}
   },
+  async intakeEmail(subject,text){
+    try{
+      const r=await fetch('/api/intake/email',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({subject,text})});
+      const d=await r.json();
+      if(!r.ok) return {error:d.error||'error',message:d.message||'Could not import this email.'};
+      return d;
+    }catch{return {error:'network',message:'Could not reach Anchor.'};}
+  },
   async optimize(date,hotelArea,stops){
     try{
       const r=await fetch('/api/optimize',{method:'POST',headers:{'content-type':'application/json'},
