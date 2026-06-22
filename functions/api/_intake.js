@@ -61,7 +61,9 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
     : null;
   const saveDocument = Boolean(docIntent?.saveDocument && isUsefulDocumentInfo(docIntent, { subject, text: cleanText }));
   const targetTrip = saveDocument ? matchTripForDocument(library, docIntent) : activeTrip;
-  const extracted = await extractTravelInfo(env, { subject, text: cleanText, from });
+  const extracted = saveDocument && !looksLikeTravelEmail(subject + '\n' + cleanText)
+    ? { summary: 'No travel facts found.', hotel: null, flights: [] }
+    : await extractTravelInfo(env, { subject, text: cleanText, from });
   const usefulTravel = hasUsefulTravelFacts(extracted);
   if (saveDocument && docIntent.summary) extracted.summary = docIntent.summary;
   const before = summarizeTrip(targetTrip);
@@ -142,36 +144,10 @@ export function hasDocumentSaveRequest({ subject, text }) {
     /\bfor\s+(the\s+)?trip\b[\s\S]{0,120}\b(?:documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\b/.test(hay);
 }
 
-async function extractDocumentInfo(env, { subject, text, from }) {
-  const fallback = fallbackDocumentInfo({ subject, text });
-  if (!env.ANTHROPIC_API_KEY) return fallback;
-  const system = 'You turn forwarded emails into clean trip documents. Return ONLY valid JSON. If the sender asks to save this for a trip, preserve the useful content in readable notes. Do not invent details.';
-  const user = 'Return this JSON shape:\n' +
-    '{"saveDocument":true,"target":{"date":"YYYY-MM-DD if mentioned","city":"city/destination if mentioned","text":"raw target phrase"},"title":"short useful title","kind":"conference|offsite|agenda|ticket|briefing|note|other","summary":"one sentence summary","cleanText":"readable Markdown-style notes, with headings/bullets if useful"}\n\n' +
-    'From: ' + (from || '(unknown)') + '\nSubject: ' + (subject || '(none)') + '\nEmail text:\n' + text.slice(0, MAX_EMAIL_CHARS);
-  const out = await callClaudeSonnet(env, { system, user, maxTokens: 2200 });
-  if (out.error) return fallback;
-  const parsed = extractJson(out.text);
-  return normalizeDocumentInfo(parsed, fallback);
-}
-
-function normalizeDocumentInfo(parsed, fallback) {
-  const p = parsed && typeof parsed === 'object' ? parsed : {};
-  const target = p.target && typeof p.target === 'object' ? p.target : {};
-  const out = {
-    saveDocument: p.saveDocument !== false,
-    target: {
-      date: isoDateFlexible(target.date || fallback.target.date),
-      city: str(target.city || fallback.target.city, 80),
-      text: str(target.text || fallback.target.text, 160),
-    },
-    title: str(p.title || fallback.title, 120),
-    kind: str(p.kind || fallback.kind || 'note', 40),
-    summary: str(p.summary || fallback.summary, 220),
-    cleanText: str(p.cleanText || p.text || fallback.cleanText, MAX_DOC_TEXT),
-  };
-  if (!out.cleanText) out.cleanText = fallback.cleanText;
-  return out;
+async function extractDocumentInfo(env, { subject, text }) {
+  // Document emails are filing, not interpretation: save the cleaned original
+  // body so the reader shows what the user forwarded.
+  return fallbackDocumentInfo({ subject, text });
 }
 
 export function fallbackDocumentInfo({ subject, text }) {
