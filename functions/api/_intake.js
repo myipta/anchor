@@ -7,6 +7,7 @@ const INBOX_LIMIT = 20;
 const FLIGHT_LIMIT = 30;
 const DOC_LIMIT = 40;
 const MAX_DOC_TEXT = 18000;
+const MAX_ATTACHMENT_BYTES = 650000;
 
 export async function readEmailMessage(message) {
   const raw = await new Response(message.raw).text();
@@ -24,7 +25,8 @@ export function parseRawEmail(raw, defaults = {}) {
   const from = defaults.from || headers.from || '';
   const to = defaults.to || headers.to || '';
   const text = extractTextBody(body, contentType, transfer).slice(0, MAX_EMAIL_CHARS);
-  return { raw, headers, subject, from, to, text };
+  const attachments = extractAttachments(body, contentType).slice(0, 6);
+  return { raw, headers, subject, from, to, text, attachments };
 }
 
 export function emailAddress(value) {
@@ -46,18 +48,19 @@ export async function userForInboundEmail(env, from) {
   return { user };
 }
 
-export async function ingestTravelEmail(env, user, { subject = '', text = '', from = '', receivedAt = Date.now() }) {
+export async function ingestTravelEmail(env, user, { subject = '', text = '', from = '', receivedAt = Date.now(), attachments = [] }) {
   await ensureSchema(env);
   const cleanText = String(text || '').replace(/\u0000/g, '').slice(0, MAX_EMAIL_CHARS);
-  if (!cleanText.trim()) return { error: 'empty_email' };
+  const safeAttachments = normalizeAttachments(attachments);
+  if (!cleanText.trim() && !safeAttachments.length) return { error: 'empty_email' };
 
   const row = await env.DB.prepare('SELECT id, data FROM trips WHERE user_id=?').bind(user.id).first();
   let stored = null;
   if (row) { try { stored = JSON.parse(row.data); } catch { stored = null; } }
   const library = toTripLibrary(stored);
   const activeTrip = activeTripFromLibrary(library);
-  const docIntent = hasDocumentSaveRequest({ subject, text: cleanText })
-    ? await extractDocumentInfo(env, { subject, text: cleanText, from })
+  const docIntent = hasDocumentSaveRequest({ subject, text: cleanText }) || safeAttachments.length
+    ? await extractDocumentInfo(env, { subject, text: cleanText, attachments: safeAttachments })
     : null;
   const saveDocument = Boolean(docIntent?.saveDocument && isUsefulDocumentInfo(docIntent, { subject, text: cleanText }));
   const targetTrip = saveDocument ? matchTripForDocument(library, docIntent) : activeTrip;
@@ -144,23 +147,25 @@ export function hasDocumentSaveRequest({ subject, text }) {
     /\bfor\s+(the\s+)?trip\b[\s\S]{0,120}\b(?:documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\b/.test(hay);
 }
 
-async function extractDocumentInfo(env, { subject, text }) {
+async function extractDocumentInfo(env, { subject, text, attachments = [] }) {
   // Document emails are filing, not interpretation: save the cleaned original
   // body so the reader shows what the user forwarded.
-  return fallbackDocumentInfo({ subject, text });
+  return fallbackDocumentInfo({ subject, text, attachments });
 }
 
-export function fallbackDocumentInfo({ subject, text }) {
+export function fallbackDocumentInfo({ subject, text, attachments = [] }) {
   const target = targetFromText(subject + '\n' + text);
   const clean = cleanDocumentText(text);
+  const files = normalizeAttachments(attachments);
   const title = str(subject, 120) || firstUsefulLine(clean) || 'Trip document';
   return {
     saveDocument: true,
     target,
     title,
-    kind: /conference|summit|agenda/i.test(subject + text) ? 'conference' : (/offsite/i.test(subject + text) ? 'offsite' : 'note'),
-    summary: firstUsefulLine(clean) || 'Saved trip document.',
+    kind: /conference|summit|agenda/i.test(subject + text) ? 'conference' : (/offsite/i.test(subject + text) ? 'offsite' : (files.length ? 'attachment' : 'note')),
+    summary: firstUsefulLine(clean) || (files.length ? 'Saved ' + files.length + ' attached file' + (files.length === 1 ? '' : 's') + '.' : 'Saved trip document.'),
     cleanText: clean,
+    attachments: files,
   };
 }
 
@@ -210,6 +215,7 @@ function addDocumentToTrip(trip, doc, meta) {
     kind: doc.kind || 'note',
     summary: doc.summary || 'Saved trip document.',
     text: doc.cleanText || cleanDocumentText(meta.text),
+    attachments: Array.isArray(doc.attachments) ? doc.attachments : [],
     target: doc.target || {},
     source: 'email',
     matchedTripId: meta.matchedTripId || t.id || '',
@@ -422,6 +428,76 @@ function extractTextBody(body, contentType, transfer) {
   return txt;
 }
 
+function extractAttachments(body, contentType) {
+  const attachments = [];
+  walkMime(String(body || ''), contentType, part => {
+    const ct = part.contentType || '';
+    const cd = part.disposition || '';
+    const filename = part.filename || filenameFromHeaders(ct, cd);
+    const isPdf = /application\/pdf/i.test(ct) || /\.pdf$/i.test(filename || '');
+    const isAttachment = /attachment/i.test(cd) || filename;
+    if (!isPdf || !isAttachment) return;
+    const base64 = /base64/i.test(part.transfer || '') ? String(part.body || '').replace(/\s+/g, '') : '';
+    if (!base64) return;
+    let byteLength = 0;
+    try { byteLength = atob(base64).length; } catch { return; }
+    const name = str(filename || 'document.pdf', 140);
+    if (byteLength > MAX_ATTACHMENT_BYTES) {
+      attachments.push({ name, contentType: 'application/pdf', byteLength, tooLarge: true });
+      return;
+    }
+    attachments.push({
+      name,
+      contentType: 'application/pdf',
+      byteLength,
+      dataUrl: 'data:application/pdf;base64,' + base64,
+    });
+  });
+  return attachments;
+}
+
+function walkMime(body, contentType, onPart) {
+  const boundary = (String(contentType || '').match(/boundary="?([^";]+)"?/i) || [])[1];
+  if (!boundary) return;
+  const parts = String(body || '').split('--' + boundary);
+  for (const rawPart of parts) {
+    if (!rawPart || /^--\s*$/.test(rawPart.trim())) continue;
+    const split = rawPart.search(/\r?\n\r?\n/);
+    if (split < 0) continue;
+    const head = rawPart.slice(0, split);
+    const partBody = rawPart.slice(split).replace(/^\r?\n\r?\n?/, '').replace(/\r?\n--$/, '');
+    const h = parseHeaders(head);
+    const ct = h['content-type'] || '';
+    if (/multipart\//i.test(ct)) walkMime(partBody, ct, onPart);
+    else onPart({
+      headers: h,
+      contentType: ct,
+      disposition: h['content-disposition'] || '',
+      transfer: h['content-transfer-encoding'] || '',
+      filename: filenameFromHeaders(ct, h['content-disposition'] || ''),
+      body: partBody,
+    });
+  }
+}
+
+function filenameFromHeaders(contentType, disposition) {
+  const raw = (String(disposition || '').match(/filename\*?=(?:"([^"]+)"|([^;\n]+))/i) || String(contentType || '').match(/name\*?=(?:"([^"]+)"|([^;\n]+))/i) || [])[1] || '';
+  return decodeMimeWords(String(raw || '').replace(/^UTF-8''/i, '').trim());
+}
+
+function normalizeAttachments(attachments) {
+  return (Array.isArray(attachments) ? attachments : [])
+    .filter(a => a && typeof a === 'object')
+    .map(a => ({
+      name: str(a.name || 'document.pdf', 140),
+      contentType: str(a.contentType || 'application/pdf', 80),
+      byteLength: Math.max(0, Number(a.byteLength) || 0),
+      ...(a.tooLarge ? { tooLarge: true } : {}),
+      ...(a.dataUrl && /^data:application\/pdf;base64,/i.test(a.dataUrl) ? { dataUrl: a.dataUrl } : {}),
+    }))
+    .filter(a => /application\/pdf/i.test(a.contentType) && (a.dataUrl || a.tooLarge));
+}
+
 function decodeTransfer(value, transfer) {
   const body = String(value || '').trim();
   if (/base64/i.test(transfer)) {
@@ -551,6 +627,7 @@ export function hasUsefulTravelFacts(extracted) {
 
 export function isUsefulDocumentInfo(doc, meta = {}) {
   if (!doc || doc.saveDocument === false) return false;
+  if (Array.isArray(doc.attachments) && doc.attachments.length) return true;
   const clean = cleanDocumentText(doc.cleanText || doc.text || meta.text || '');
   const words = clean.split(/\s+/).filter(w => /[a-z0-9]/i.test(w)).length;
   const chars = clean.replace(/\s/g, '').length;

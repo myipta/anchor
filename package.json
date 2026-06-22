@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "npm run build && node scripts/check-backend.mjs && node scripts/check-routes.mjs && node scripts/check-intake.mjs && node scripts/check-trip-state.mjs && node scripts/check-trip-merge.mjs",
+    "check": "npm run build && node scripts/check-backend.mjs && node scripts/check-routes.mjs && node scripts/check-intake.mjs && node scripts/check-trip-state.mjs && node scripts/check-trip-merge.mjs && node scripts/check-tabelog-scope.mjs",
     "deploy": "npm run build && npx wrangler deploy",
     "ios:add": "cap add ios",
     "ios:sync": "cap sync ios",

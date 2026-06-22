@@ -20,7 +20,7 @@ export async function onRequest(context) {
   if (!query) return json({ error: 'no_query', places: [] }, 400);
   const area = (body.area || '').toString().trim();
   const destination = (body.destination || 'Tokyo').toString().trim() || 'Tokyo';
-  const useTabelog = /tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/i.test(destination);
+  const useTabelog = isJapanSearch({ destination, area });
   const taste = (body.taste && typeof body.taste === 'object') ? body.taste : {};
   const prefs = Array.isArray(body.prefs) ? body.prefs : [];
   const saved = Array.isArray(body.saved) ? body.saved : [];
@@ -94,4 +94,10 @@ function isLodgingPlace(place) {
   // otherwise a lodging result does not belong in restaurant recommendation cards.
   const foodCategory = /\b(restaurant|bar|cafe|coffee|dining|bistro|izakaya|sushi|ramen|yakitori|yakiniku|kaiseki|omakase|tempura|tonkatsu|soba|udon|bakery|dessert)\b/.test(category);
   return !foodCategory;
+}
+
+export function isJapanSearch({ destination = '', area = '' } = {}) {
+  const hay = String(destination || '') + ' ' + String(area || '');
+  if (/\b(broomfield|denver|colorado|\bco\b|united states|usa|u\.s\.|new york|seattle|san francisco|los angeles|chicago|boston|austin|portland)\b/i.test(hay)) return false;
+  return /\b(tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima|nagoya|yokohama|shinjuku|shibuya|ginza|asakusa|roppongi|harajuku)\b/i.test(hay);
 }

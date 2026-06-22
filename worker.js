@@ -86,6 +86,7 @@ export default {
       const result = await ingestTravelEmail(env, mapped.user, {
         subject: parsed.subject,
         text: parsed.text,
+        attachments: parsed.attachments,
         from: parsed.from,
         receivedAt: Date.now(),
       });

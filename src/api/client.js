@@ -47,7 +47,8 @@ export const API = {
   },
   async tabelog(query,area,taste,prefs,saved,excludeNames=[],destination='Tokyo'){
     try{
-      const isJapan=/tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/i.test(String(destination||''));
+      const loc=String(destination||'')+' '+String(area||'');
+      const isJapan=!/\b(broomfield|denver|colorado|\bco\b|united states|usa|u\.s\.|new york|seattle|san francisco|los angeles|chicago|boston|austin|portland)\b/i.test(loc)&&/\b(tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima|nagoya|yokohama|shinjuku|shibuya|ginza|asakusa|roppongi|harajuku)\b/i.test(loc);
       const endpoint=isJapan?'/api/tabelog':'/api/search';
       const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({query,area,taste,prefs,saved,excludeNames,destination,limit:14})});

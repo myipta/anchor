@@ -2651,6 +2651,7 @@ function DocumentOverlay({pop,doc}){
   if(!doc) return null;
   const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   const paragraphs=String(doc.text||doc.summary||'').split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
+  const attachments=Array.isArray(doc.attachments)?doc.attachments:[];
   return(
     <div style={{position:'absolute',inset:0,zIndex:50,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
       <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
@@ -2662,8 +2663,28 @@ function DocumentOverlay({pop,doc}){
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'18px 20px 42px'}}>
         {doc.summary&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#71502A',lineHeight:1.45,background:'#FFF8ED',border:'1px solid #F0D7B8',borderRadius:14,padding:'12px',marginBottom:16}}>{doc.summary}</div>}
+        {attachments.length>0&&(
+          <div style={{display:'flex',flexDirection:'column',gap:9,marginBottom:16}}>
+            {attachments.map((a,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:'#fff',border:'1px solid #ECEDF6',borderRadius:14,padding:'11px 12px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+                <div style={{width:34,height:34,borderRadius:10,background:'#FFF2DF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14.5,color:'#16172A',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.name||'Attachment.pdf'}</div>
+                  <div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#9092AD',marginTop:2}}>{a.byteLength?Math.ceil(a.byteLength/1024)+' KB':'PDF'}</div>
+                </div>
+                {a.dataUrl?(
+                  <a href={a.dataUrl} target="_blank" rel="noopener noreferrer" download={a.name||'attachment.pdf'} style={{border:'none',borderRadius:11,background:'#6C5CE7',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:13,padding:'9px 12px',textDecoration:'none',flexShrink:0}}>Open</a>
+                ):(
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#D8553C',fontWeight:700,flexShrink:0}}>Too large</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#353756',lineHeight:1.55,whiteSpace:'pre-wrap'}}>
-          {paragraphs.length?paragraphs.map((p,i)=><p key={i} style={{margin:'0 0 14px'}}>{p}</p>):'No readable text was saved for this document.'}
+          {paragraphs.length?paragraphs.map((p,i)=><p key={i} style={{margin:'0 0 14px'}}>{p}</p>):(attachments.length?'Open the attached file above.':'No readable text was saved for this document.')}
         </div>
         {doc.subject&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#B6B8CC',marginTop:22}}>Subject: {doc.subject}</div>}
       </div>
