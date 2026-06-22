@@ -28,8 +28,10 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 
 - Restaurant recommendation cards must exclude lodging results. `/api/tabelog` filters hotel/lodging/hostel/ryokan-style categories and the current stay before returning cards, and the Search UI removes existing lodging cards when the traveler says things like “no hotels.” Keep this deterministic; do not rely only on LLM taste-ranking for exclusion.
 
-- Email intake imports forwarded itinerary and hotel confirmations into the active trip. Route `trips@mattyip.dev` to the Worker with Cloudflare Email Routing; sender email must be allowlisted. If the stored data is a multi-trip library, intake updates only `activeTripId`. The Today header shows an email/import button, a refresh button, and a recent-import banner when `travelInbox` has entries.
+- Email intake imports forwarded itinerary and hotel confirmations into the active trip. Route `trips@mattyip.dev` to the Worker with Cloudflare Email Routing; sender email must be allowlisted. If the stored data is a multi-trip library, intake updates only `activeTripId`. The Today header shows an email/import button, a document button, a refresh button, and recent banners when `travelInbox` or `documents` has entries.
 
 - Multi-trip support is implemented inside the existing `anchor_v1` / `/api/trip` blob as `{ version: 2, activeTripId, trips }`. The Today tab has the trip selector and create-trip action. Anchors, scratchpad, itinerary, flights, inbox, and hotel details stay scoped to the selected trip. New trips copy only training data (`prefs` and `taste`) from the current trip.
+
+- Document emails: if the email body includes “save this for the trip on July 10” or “save this for the trip in Paris,” intake saves a cleaned readable document to the matching trip by date/city while still parsing any flight/hotel facts. First pass stores extracted email body/HTML text; PDF/image attachment OCR is still future work.
 
 - Future roadmap: make destinations outside Tokyo first-class. City support should keep the same concierge/planning pattern, but recommendation providers become destination-aware: Tabelog is Japan-only; non-Japan cities should use Google Places and/or other local sources instead of Tabelog.

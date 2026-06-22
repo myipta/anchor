@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 13 · Jun 21';
+const BUILD='build 14 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -947,7 +947,9 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   );
 
   const inbox=Array.isArray(trip.travelInbox)?trip.travelInbox:[];
+  const documents=Array.isArray(trip.documents)?trip.documents:[];
   const lastImport=inbox[0]||null;
+  const lastDoc=documents[0]||null;
   const importTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?'':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   const InboxBtn=()=> (
     <button onClick={()=>push({type:'trip'})} aria-label="Email imports" style={{position:'relative',width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:lastImport?'#F0FFF7':'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
@@ -955,18 +957,34 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
       {inbox.length>0&&<span style={{position:'absolute',top:-4,right:-4,minWidth:17,height:17,padding:'0 4px',borderRadius:999,background:'#14A06E',color:'#fff',fontFamily:"'Geist Mono',monospace",fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid #FAFAFD'}}>{Math.min(inbox.length,9)}</span>}
     </button>
   );
+  const DocsBtn=()=> (
+    <button onClick={()=>push({type:'docs'})} aria-label="Trip documents" style={{position:'relative',width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:lastDoc?'#FFF8ED':'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={lastDoc?'#B76E18':'#4E5072'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></svg>
+      {documents.length>0&&<span style={{position:'absolute',top:-4,right:-4,minWidth:17,height:17,padding:'0 4px',borderRadius:999,background:'#C9822B',color:'#fff',fontFamily:"'Geist Mono',monospace",fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid #FAFAFD'}}>{Math.min(documents.length,9)}</span>}
+    </button>
+  );
   const RefreshBtn=()=> !onRefreshTrip?null:(
     <button onClick={onRefreshTrip} aria-label="Refresh imports" disabled={refreshingTrip} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:refreshingTrip?'default':'pointer',opacity:refreshingTrip?0.65:1}}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
     </button>
   );
-  const HeaderActions=()=> <div style={{display:'flex',alignItems:'center',gap:6}}><InboxBtn/><RefreshBtn/><EditBtn/></div>;
+  const HeaderActions=()=> <div style={{display:'flex',alignItems:'center',gap:6}}><InboxBtn/><DocsBtn/><RefreshBtn/><EditBtn/></div>;
   const ImportBanner=()=> !lastImport?null:(
     <button onClick={()=>push({type:'trip'})} style={{width:'100%',marginTop:10,border:'1px solid #BCEBD3',background:'#F0FFF7',borderRadius:13,padding:'9px 11px',display:'flex',alignItems:'center',gap:9,textAlign:'left',cursor:'pointer'}}>
       <div style={{width:28,height:28,borderRadius:9,background:'#DDF7E9',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E865B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
       <div style={{minWidth:0,flex:1}}>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#0E865B',letterSpacing:'0.06em',textTransform:'uppercase'}}>Email imported</div>
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#27624C',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{lastImport.summary||'Travel email processed'}{importTime(lastImport.receivedAt)?' · '+importTime(lastImport.receivedAt):''}</div>
+      </div>
+    </button>
+  );
+
+  const DocumentBanner=()=> !lastDoc?null:(
+    <button onClick={()=>push({type:'doc',docId:lastDoc.id})} style={{width:'100%',marginTop:8,border:'1px solid #F0D7B8',background:'#FFF8ED',borderRadius:13,padding:'9px 11px',display:'flex',alignItems:'center',gap:9,textAlign:'left',cursor:'pointer'}}>
+      <div style={{width:28,height:28,borderRadius:9,background:'#F8E7CD',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+      <div style={{minWidth:0,flex:1}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#B76E18',letterSpacing:'0.06em',textTransform:'uppercase'}}>Document saved</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#71502A',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{lastDoc.title||lastDoc.subject||'Trip document'}{importTime(lastDoc.receivedAt)?' · '+importTime(lastDoc.receivedAt):''}</div>
       </div>
     </button>
   );
@@ -1042,7 +1060,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
             </div>
             <HeaderActions/>
           </div>
-          <TripSwitcher/><ImportBanner/>
+          <TripSwitcher/><ImportBanner/><DocumentBanner/>
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{padding:'40px 24px 32px',textAlign:'center',background:'linear-gradient(180deg,#F1EEFF 0%,#FAFAFD 100%)'}}>
@@ -1087,7 +1105,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
           </div>
           <HeaderActions/>
         </div>
-        <TripSwitcher/><ImportBanner/>
+        <TripSwitcher/><ImportBanner/><DocumentBanner/>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'48px 24px',textAlign:'center'}}>
         <div style={{fontSize:56,marginBottom:14}}>🎌</div>
@@ -1114,7 +1132,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
             </button>
           </div>
         </div>
-        <TripSwitcher/><ImportBanner/>
+        <TripSwitcher/><ImportBanner/><DocumentBanner/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>
             <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>{trip.arrivalDate&&fmtDateLong(addDays(trip.arrivalDate,viewDay))}</span> · {dayStops.length} stops
@@ -2186,6 +2204,7 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
   const today=todayStr();
   const flights=Array.isArray(trip.flights)?trip.flights:[];
   const inbox=Array.isArray(trip.travelInbox)?trip.travelInbox:[];
+  const documents=Array.isArray(trip.documents)?trip.documents:[];
   const flightTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   const days=Array.from({length:trip.nights||0},(_,i)=>({
     date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
@@ -2222,6 +2241,19 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
           </div>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.45,marginTop:8}}>Forward airline or hotel confirmation emails from your signed-in address. Anchor will fill your hotel, dates, and flights.</div>
           {inbox[0]&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#0E865B',marginTop:9}}>Last import: {inbox[0].summary}</div>}
+        </div>
+        <div onClick={()=>push({type:'docs'})} style={{margin:'0 0 16px',background:'#fff',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',cursor:'pointer'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:38,height:38,borderRadius:12,background:'#FFF2DF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></svg>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,letterSpacing:'0.10em',textTransform:'uppercase',color:'#9092AD'}}>Documents</div>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A',marginTop:3}}>{documents.length} saved {documents.length===1?'document':'documents'}</div>
+              {documents[0]&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#71502A',marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Latest: {documents[0].title||documents[0].subject}</div>}
+            </div>
+            <ChevRight/>
+          </div>
         </div>
         {trip.anchors&&trip.anchors.length>0&&(
           <>
@@ -2309,6 +2341,66 @@ function ScratchCard({item,onAnchor,onRemove}){
         </button>
         {item.googleUrl&&<a href={item.googleUrl} target="_blank" rel="noopener noreferrer" style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#4E5072',fontWeight:600,fontSize:13.5,padding:'9px 14px',borderRadius:11,textDecoration:'none',display:'inline-flex',alignItems:'center'}}>Map</a>}
         <button onClick={()=>onRemove(item.id)} style={{border:'1.5px solid #E3E5F0',background:'#fff',color:'#9092AD',fontWeight:600,fontSize:13.5,padding:'9px 13px',borderRadius:11,cursor:'pointer'}}>Remove</button>
+      </div>
+    </div>
+  );
+}
+
+function DocsOverlay({pop,push,trip}){
+  const docs=Array.isArray(trip.documents)?trip.documents:[];
+  const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+  return(
+    <div style={{position:'absolute',inset:0,zIndex:45,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:20,color:'#16172A'}}>Documents</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{trip.destination||'Trip'} · {docs.length} saved</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'16px 18px 36px'}}>
+        {docs.length===0?(
+          <div style={{marginTop:20,background:'#fff',borderRadius:18,padding:'18px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)'}}>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>No saved documents yet</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#6C6E8E',lineHeight:1.45,marginTop:6}}>Forward an email and include “save this for the trip on July 10” or “save this for the trip in Paris.” Anchor will attach it to the matching trip.</div>
+          </div>
+        ):docs.map(doc=>(
+          <button key={doc.id} onClick={()=>push({type:'doc',docId:doc.id})} style={{width:'100%',textAlign:'left',border:'none',background:'#fff',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',marginBottom:10,cursor:'pointer'}}>
+            <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+              <div style={{width:38,height:38,borderRadius:12,background:'#FFF2DF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.2}}>{doc.title||doc.subject||'Trip document'}</div>
+                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:3}}>{[doc.kind,docTime(doc.receivedAt)].filter(Boolean).join(' · ')}</div>
+                {doc.summary&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.35,marginTop:7}}>{doc.summary}</div>}
+              </div>
+              <ChevRight/>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DocumentOverlay({pop,doc}){
+  if(!doc) return null;
+  const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+  const paragraphs=String(doc.text||doc.summary||'').split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
+  return(
+    <div style={{position:'absolute',inset:0,zIndex:50,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',gap:12,padding:'16px 16px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6'}}>
+        <BackBtn onClick={pop}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{doc.title||doc.subject||'Trip document'}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:1}}>{[doc.kind,docTime(doc.receivedAt)].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'18px 20px 42px'}}>
+        {doc.summary&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14,color:'#71502A',lineHeight:1.45,background:'#FFF8ED',border:'1px solid #F0D7B8',borderRadius:14,padding:'12px',marginBottom:16}}>{doc.summary}</div>}
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:15,color:'#353756',lineHeight:1.55,whiteSpace:'pre-wrap'}}>
+          {paragraphs.length?paragraphs.map((p,i)=><p key={i} style={{margin:'0 0 14px'}}>{p}</p>):'No readable text was saved for this document.'}
+        </div>
+        {doc.subject&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#B6B8CC',marginTop:22}}>Subject: {doc.subject}</div>}
       </div>
     </div>
   );
@@ -2962,6 +3054,8 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip} user={user} cloud={cloud} onLogout={onLogout} onSignIn={onSignIn}/>}
+        {top&&top.type==='docs'   &&<DocsOverlay pop={pop} push={push} trip={trip}/>}
+        {top&&top.type==='doc'    &&<DocumentOverlay pop={pop} doc={(trip.documents||[]).find(d=>d.id===top.docId)}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
         {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {top&&top.type==='day'    &&<DayPlanOverlay key={top.dayIndex} dayIndex={top.dayIndex} pop={pop} push={push} trip={trip} onAdd={addToDay} onRemove={removeFromDay} onMove={moveInDay} onOptimized={applyOptimized}/>}

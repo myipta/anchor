@@ -5,6 +5,8 @@ import { lookupPlace } from './_search.js';
 const MAX_EMAIL_CHARS = 24000;
 const INBOX_LIMIT = 20;
 const FLIGHT_LIMIT = 30;
+const DOC_LIMIT = 40;
+const MAX_DOC_TEXT = 18000;
 
 export async function readEmailMessage(message) {
   const raw = await new Response(message.raw).text();
@@ -49,22 +51,31 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
   const cleanText = String(text || '').replace(/\u0000/g, '').slice(0, MAX_EMAIL_CHARS);
   if (!cleanText.trim()) return { error: 'empty_email' };
 
-  const extracted = await extractTravelInfo(env, { subject, text: cleanText, from });
   const row = await env.DB.prepare('SELECT id, data FROM trips WHERE user_id=?').bind(user.id).first();
   let stored = null;
   if (row) { try { stored = JSON.parse(row.data); } catch { stored = null; } }
   const library = toTripLibrary(stored);
   const activeTrip = activeTripFromLibrary(library);
-  const before = summarizeTrip(activeTrip);
-  const merged = await mergeTravelIntoTrip(env, activeTrip, extracted, { subject, from, receivedAt });
+  const docIntent = hasDocumentSaveRequest({ subject, text: cleanText })
+    ? await extractDocumentInfo(env, { subject, text: cleanText, from })
+    : null;
+  const targetTrip = docIntent?.saveDocument ? matchTripForDocument(library, docIntent) : activeTrip;
+  const extracted = await extractTravelInfo(env, { subject, text: cleanText, from });
+  if (docIntent?.saveDocument && docIntent.summary) extracted.summary = docIntent.summary;
+  const before = summarizeTrip(targetTrip);
+  const merged = await mergeTravelIntoTrip(env, targetTrip, extracted, { subject, from, receivedAt });
+  if (docIntent?.saveDocument) {
+    merged.trip = addDocumentToTrip(merged.trip, docIntent, { subject, text: cleanText, from, receivedAt, matchedTripId: targetTrip.id });
+    merged.applied.document = true;
+  }
   const now = Date.now();
   merged.trip.updatedAt = now;
-  const nextLibrary = { ...updateActiveTripInLibrary(library, merged.trip), updatedAt: now };
+  const nextLibrary = { ...updateActiveTripInLibrary(library, merged.trip), activeTripId: library.activeTripId, updatedAt: now };
   const dataStr = JSON.stringify(nextLibrary);
   if (row) await env.DB.prepare('UPDATE trips SET data=?, updated_at=? WHERE user_id=?').bind(dataStr, now, user.id).run();
   else await env.DB.prepare('INSERT INTO trips (id, user_id, data, updated_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), user.id, dataStr, now).run();
 
-  return { ok: true, extracted, applied: merged.applied, before, after: summarizeTrip(merged.trip), updated_at: now };
+  return { ok: true, extracted, document: docIntent, applied: merged.applied, before, after: summarizeTrip(merged.trip), updated_at: now };
 }
 
 async function extractTravelInfo(env, { subject, text, from }) {
@@ -101,6 +112,129 @@ async function callClaudeSonnet(env, { system, user, maxTokens = 1200 }) {
   const data = await r.json();
   const text = (data.content || []).map(part => part && part.type === 'text' ? part.text : '').join('').trim();
   return text ? { text, model } : { error: 'empty_response' };
+}
+
+function hasDocumentSaveRequest({ subject, text }) {
+  const hay = (String(subject || '') + '\n' + String(text || '')).toLowerCase();
+  return /save\s+this\s+for\s+(the\s+)?trip/.test(hay) || /save\s+for\s+(the\s+)?trip/.test(hay);
+}
+
+async function extractDocumentInfo(env, { subject, text, from }) {
+  const fallback = fallbackDocumentInfo({ subject, text });
+  if (!env.ANTHROPIC_API_KEY) return fallback;
+  const system = 'You turn forwarded emails into clean trip documents. Return ONLY valid JSON. If the sender asks to save this for a trip, preserve the useful content in readable notes. Do not invent details.';
+  const user = 'Return this JSON shape:\n' +
+    '{"saveDocument":true,"target":{"date":"YYYY-MM-DD if mentioned","city":"city/destination if mentioned","text":"raw target phrase"},"title":"short useful title","kind":"conference|offsite|agenda|ticket|briefing|note|other","summary":"one sentence summary","cleanText":"readable Markdown-style notes, with headings/bullets if useful"}\n\n' +
+    'From: ' + (from || '(unknown)') + '\nSubject: ' + (subject || '(none)') + '\nEmail text:\n' + text.slice(0, MAX_EMAIL_CHARS);
+  const out = await callClaudeSonnet(env, { system, user, maxTokens: 2200 });
+  if (out.error) return fallback;
+  const parsed = extractJson(out.text);
+  return normalizeDocumentInfo(parsed, fallback);
+}
+
+function normalizeDocumentInfo(parsed, fallback) {
+  const p = parsed && typeof parsed === 'object' ? parsed : {};
+  const target = p.target && typeof p.target === 'object' ? p.target : {};
+  const out = {
+    saveDocument: p.saveDocument !== false,
+    target: {
+      date: isoDateFlexible(target.date || fallback.target.date),
+      city: str(target.city || fallback.target.city, 80),
+      text: str(target.text || fallback.target.text, 160),
+    },
+    title: str(p.title || fallback.title, 120),
+    kind: str(p.kind || fallback.kind || 'note', 40),
+    summary: str(p.summary || fallback.summary, 220),
+    cleanText: str(p.cleanText || p.text || fallback.cleanText, MAX_DOC_TEXT),
+  };
+  if (!out.cleanText) out.cleanText = fallback.cleanText;
+  return out;
+}
+
+function fallbackDocumentInfo({ subject, text }) {
+  const target = targetFromText(subject + '\n' + text);
+  const clean = cleanDocumentText(text);
+  const title = str(subject, 120) || firstUsefulLine(clean) || 'Trip document';
+  return {
+    saveDocument: true,
+    target,
+    title,
+    kind: /conference|summit|agenda/i.test(subject + text) ? 'conference' : (/offsite/i.test(subject + text) ? 'offsite' : 'note'),
+    summary: firstUsefulLine(clean) || 'Saved trip document.',
+    cleanText: clean,
+  };
+}
+
+function targetFromText(value) {
+  const s = String(value || '');
+  const phrase = (s.match(/save\s+this\s+for\s+(?:the\s+)?trip\s+(?:on|for)\s+([^\n.]+)/i) || s.match(/save\s+this\s+for\s+(?:the\s+)?trip\s+(?:in|to)\s+([^\n.]+)/i) || [])[1] || '';
+  return { date: isoDateFlexible(phrase), city: cityFromPhrase(phrase), text: str(phrase, 160) };
+}
+
+function cityFromPhrase(value) {
+  const s = String(value || '').trim();
+  const m = s.match(/(?:in|to)\s+([A-Za-z][A-Za-z .'-]{1,60})/i);
+  const raw = (m ? m[1] : s).replace(/\b(on|for|around|about|date|city)\b/ig, ' ').replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, ' ').replace(/\b20\d{2}\b/g, ' ').replace(/\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+  return raw.length >= 2 ? str(raw, 80) : '';
+}
+
+function cleanDocumentText(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .filter(line => !/save\s+this\s+for\s+(the\s+)?trip/i.test(line))
+    .join('\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, MAX_DOC_TEXT);
+}
+
+function firstUsefulLine(value) {
+  return str(String(value || '').split(/\n+/).map(x => x.trim()).find(x => x.length > 8) || '', 180);
+}
+
+function addDocumentToTrip(trip, doc, meta) {
+  const t = { ...trip };
+  const docs = Array.isArray(t.documents) ? t.documents : [];
+  const item = {
+    id: 'doc-' + meta.receivedAt + '-' + Math.random().toString(36).slice(2, 7),
+    receivedAt: meta.receivedAt,
+    from: str(meta.from, 120),
+    subject: str(meta.subject, 180),
+    title: doc.title || str(meta.subject, 120) || 'Trip document',
+    kind: doc.kind || 'note',
+    summary: doc.summary || 'Saved trip document.',
+    text: doc.cleanText || cleanDocumentText(meta.text),
+    target: doc.target || {},
+    source: 'email',
+    matchedTripId: meta.matchedTripId || t.id || '',
+  };
+  t.documents = [item, ...docs.filter(d => !(normalizeName(d.subject) === normalizeName(item.subject) && Math.abs(Number(d.receivedAt || 0) - meta.receivedAt) < 60000))].slice(0, DOC_LIMIT);
+  return t;
+}
+
+function matchTripForDocument(library, doc) {
+  const lib = toTripLibrary(library);
+  const trips = lib.trips.length ? lib.trips : [activeTripFromLibrary(lib)];
+  const targetDate = doc?.target?.date || '';
+  const city = normalizeName(doc?.target?.city || '');
+  if (targetDate) {
+    const byDate = trips.find(t => tripContainsDate(t, targetDate));
+    if (byDate) return byDate;
+  }
+  if (city) {
+    const byCity = trips.find(t => normalizeName([t.destination, ...(t.anchors || []).map(a => [a.name, a.area, a.address].filter(Boolean).join(' '))].join(' ')).includes(city));
+    if (byCity) return byCity;
+  }
+  return activeTripFromLibrary(lib);
+}
+
+function tripContainsDate(trip, date) {
+  if (!trip || !date) return false;
+  const arr = isoDateFlexible(trip.arrivalDate || trip.anchors?.[0]?.checkin);
+  const dep = isoDateFlexible(trip.departureDate || trip.anchors?.[0]?.checkout);
+  if (arr && dep) return date >= arr && date <= dep;
+  return date === arr || date === dep;
 }
 
 function normalizeExtracted(parsed, fallback) {
@@ -394,6 +528,19 @@ function isoDate(value) {
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   return '';
+}
+
+function isoDateFlexible(value) {
+  const exact = isoDate(value);
+  if (exact) return exact;
+  const s = String(value || '').trim();
+  const m = s.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  if (!m) return '';
+  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const month = months.findIndex(x => m[1].toLowerCase().startsWith(x));
+  if (month < 0) return '';
+  const year = (s.match(/\b(20\d{2})\b/) || [])[1] || String(new Date().getFullYear());
+  return year + '-' + String(month + 1).padStart(2, '0') + '-' + m[2].padStart(2, '0');
 }
 
 function dateDiff(from, to) {
