@@ -20,5 +20,11 @@ const repaired = ensureTrip({ id: 'trip-corrupt', destination: 'Tokyo', anchors:
 assert.equal(repaired.destination, 'Broomfield, CO');
 const repairedFlight = ensureTrip({ id: 'trip-den-flight', destination: 'Tokyo', flights: [{ arriveAirport: 'DEN', arriveAt: '2026-06-22T14:40' }] });
 assert.equal(repairedFlight.destination, 'Denver, CO');
+const repairedNights = ensureTrip({ id: 'trip-nights', destination: 'Broomfield, CO', arrivalDate: '2026-06-22', departureDate: '2026-06-26', nights: 1 });
+assert.equal(repairedNights.nights, 4);
+const repairedAnchorNights = ensureTrip({ id: 'trip-anchor-nights', destination: 'Tokyo', nights: 1, anchors: [{ name: 'Okura Tokyo', checkin: '2026-07-09', checkout: '2026-07-12' }] });
+assert.equal(repairedAnchorNights.arrivalDate, '2026-07-09');
+assert.equal(repairedAnchorNights.departureDate, '2026-07-12');
+assert.equal(repairedAnchorNights.nights, 3);
 
 console.log('trip state guardrails ok');

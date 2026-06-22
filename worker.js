@@ -27,6 +27,7 @@ import { onRequest as authMe } from './functions/api/auth-me.js';
 import { onRequest as authLogout } from './functions/api/auth-logout.js';
 import { onRequest as trip } from './functions/api/trip.js';
 import { onRequest as intakeEmail } from './functions/api/intake-email.js';
+import { onRequest as attachment } from './functions/api/attachment.js';
 import { getUser, unauthorized } from './functions/api/_auth.js';
 import { ingestTravelEmail, readEmailMessage, userForInboundEmail } from './functions/api/_intake.js';
 
@@ -35,7 +36,7 @@ import { ingestTravelEmail, readEmailMessage, userForInboundEmail } from './func
 const PROTECTED = new Set([
   '/api/concierge', '/api/tabelog', '/api/suggest', '/api/search', '/api/searchchat', '/api/near',
   '/api/optimize', '/api/chat', '/api/refine', '/api/parse-place', '/api/places', '/api/photo',
-  '/api/intake/email', '/api/intake-email',
+  '/api/intake/email', '/api/intake-email', '/api/attachment',
 ]);
 
 const ROUTES = {
@@ -59,6 +60,7 @@ const ROUTES = {
   '/api/trip': trip,
   '/api/intake/email': intakeEmail,
   '/api/intake-email': intakeEmail,
+  '/api/attachment': attachment,
 };
 
 export default {

@@ -64,6 +64,24 @@ function inferredDestinationFromTrip(t) {
   return '';
 }
 
+function dateDiff(from, to) {
+  if (!from || !to) return 0;
+  const a = new Date(from + 'T00:00:00');
+  const b = new Date(to + 'T00:00:00');
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+function repairTripDates(t) {
+  const anchor = Array.isArray(t.anchors) && t.anchors[0] ? t.anchors[0] : null;
+  const arrival = t.arrivalDate || anchor?.checkin || '';
+  const departure = t.departureDate || anchor?.checkout || '';
+  const nights = dateDiff(arrival, departure);
+  if (arrival && !t.arrivalDate) t.arrivalDate = arrival;
+  if (departure && !t.departureDate) t.departureDate = departure;
+  if (nights > 0) t.nights = nights;
+}
+
 function blankTrip() {
   return { id: newTripId(), destination: '', arrivalDate: '', nights: 0, anchors: [], prefs: [], anchoredPlaces: [], taste: { likes: [], dislikes: [] }, createdAt: Date.now() };
 }
@@ -83,6 +101,7 @@ function ensureTrip(trip) {
   if (!t.taste || typeof t.taste !== 'object') t.taste = { likes: [], dislikes: [] };
   if (!Array.isArray(t.taste.likes)) t.taste.likes = [];
   if (!Array.isArray(t.taste.dislikes)) t.taste.dislikes = [];
+  repairTripDates(t);
   if (!t.createdAt) t.createdAt = Date.now();
   return t;
 }

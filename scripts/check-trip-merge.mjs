@@ -69,4 +69,11 @@ const deletedDocStaysDeleted = mergeTripDataForSave({
 assert.equal(deletedDocStaysDeleted.trips.find(t => t.id === 'tokyo').documents.length, 0);
 assert.deepEqual(deletedDocStaysDeleted.trips.find(t => t.id === 'tokyo').deletedDocumentIds, ['doc-1']);
 
+const repairedServerNights = mergeTripDataForSave(null, {
+  version: 2,
+  activeTripId: 'denver',
+  trips: [{ id: 'denver', destination: 'Broomfield, CO', arrivalDate: '2026-06-22', departureDate: '2026-06-26', nights: 1 }],
+}, { now });
+assert.equal(repairedServerNights.trips[0].nights, 4);
+
 console.log('trip merge guardrails ok');

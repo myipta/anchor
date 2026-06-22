@@ -726,6 +726,16 @@ function inferredDestinationFromTrip(t) {
   return '';
 }
 
+function repairTripDates(t) {
+  const anchor = Array.isArray(t.anchors) && t.anchors[0] ? t.anchors[0] : null;
+  const arrival = t.arrivalDate || anchor?.checkin || '';
+  const departure = t.departureDate || anchor?.checkout || '';
+  const nights = dateDiff(arrival, departure);
+  if (arrival && !t.arrivalDate) t.arrivalDate = arrival;
+  if (departure && !t.departureDate) t.departureDate = departure;
+  if (nights > 0) t.nights = nights;
+}
+
 function ensureTrip(trip) {
   const t = trip && typeof trip === 'object' ? { ...trip } : blankTrip();
   if (!t.id) t.id = newTripId();
@@ -741,6 +751,7 @@ function ensureTrip(trip) {
   if (!t.taste || typeof t.taste !== 'object') t.taste = { likes: [], dislikes: [] };
   if (!Array.isArray(t.taste.likes)) t.taste.likes = [];
   if (!Array.isArray(t.taste.dislikes)) t.taste.dislikes = [];
+  repairTripDates(t);
   if (!t.createdAt) t.createdAt = Date.now();
   return t;
 }

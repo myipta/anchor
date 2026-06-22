@@ -2648,8 +2648,8 @@ function DocsOverlay({pop,push,trip,onDelete}){
 }
 
 function DocumentOverlay({pop,doc}){
-  if(!doc) return null;
   const [viewer,setViewer]=useState(null);
+  if(!doc) return null;
   const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   const cleanDocText=value=>String(value||'')
     .replace(/(?:^|\n)Content-Type:\s*application\/pdf;?[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:\s*text\/|\nFrom:\s|\nSubject:\s|$)/gi,'\n')
@@ -2684,7 +2684,7 @@ function DocumentOverlay({pop,doc}){
                   <div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#9092AD',marginTop:2}}>{a.byteLength?Math.ceil(a.byteLength/1024)+' KB':'PDF'}</div>
                 </div>
                 {a.dataUrl?(
-                  <button onClick={()=>setViewer(a)} style={{border:'none',borderRadius:11,background:'#6C5CE7',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:13,padding:'9px 12px',textDecoration:'none',flexShrink:0,cursor:'pointer'}}>Open</button>
+                  <button onClick={()=>setViewer({...a,index:i})} style={{border:'none',borderRadius:11,background:'#6C5CE7',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:13,padding:'9px 12px',textDecoration:'none',flexShrink:0,cursor:'pointer'}}>Open</button>
                 ):(
                   <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#D8553C',fontWeight:700,flexShrink:0}}>Too large</div>
                 )}
@@ -2706,7 +2706,7 @@ function DocumentOverlay({pop,doc}){
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#9092AD',marginTop:1}}>{viewer.byteLength?Math.ceil(viewer.byteLength/1024)+' KB':'PDF'}</div>
             </div>
           </div>
-          <iframe title={viewer.name||'PDF attachment'} src={viewer.dataUrl} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
+          <iframe title={viewer.name||'PDF attachment'} src={doc.id?('/api/attachment?doc='+encodeURIComponent(doc.id)+'&i='+encodeURIComponent(viewer.index||0)):viewer.dataUrl} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
         </div>
       )}
     </div>
