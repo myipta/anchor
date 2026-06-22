@@ -104,7 +104,7 @@ async function extractTravelInfo(env, { subject, text, from }) {
 
   const system = 'You extract flight and hotel reservation facts from forwarded travel emails. Return ONLY valid JSON. Only extract from clear airline, hotel, booking, reservation, itinerary, or confirmation emails. If the email is a dummy/test/random note or does not contain explicit travel reservation facts, return empty hotel and flights. Dates/times should be ISO-like strings when present. If a field is unknown, use an empty string or omit it. Do not invent facts.';
   const user = 'Return this JSON shape:\n' +
-    '{"summary":"one short summary or No travel facts found.","hotel":{"name":"","address":"","area":"Tokyo neighborhood/city if clear","checkinDate":"YYYY-MM-DD","checkoutDate":"YYYY-MM-DD","confirmationNumber":""},"flights":[{"airline":"","flightNumber":"","confirmationNumber":"","departAirport":"IATA or airport name","departCity":"","departAt":"YYYY-MM-DDTHH:mm or date/time text","arriveAirport":"IATA or airport name","arriveCity":"","arriveAt":"YYYY-MM-DDTHH:mm or date/time text","terminal":"","seat":""}]}\n\n' +
+    '{"summary":"one short summary or No travel facts found.","hotel":{"name":"","address":"","area":"Tokyo neighborhood/city if clear","checkinDate":"YYYY-MM-DD","checkoutDate":"YYYY-MM-DD","confirmationNumber":""},"flights":[{"airline":"","flightNumber":"","confirmationNumber":"","recordLocator":"","bookingReference":"","departAirport":"IATA or airport name","departCity":"","departAt":"YYYY-MM-DDTHH:mm or date/time text","departTerminal":"","departGate":"","arriveAirport":"IATA or airport name","arriveCity":"","arriveAt":"YYYY-MM-DDTHH:mm or date/time text","arriveTerminal":"","arriveGate":"","terminal":"","gate":"","seat":"","boardingTime":"","status":"","checkInUrl":"","airlineUrl":""}]}\n\n' +
     'From: ' + (from || '(unknown)') + '\nSubject: ' + (subject || '(none)') + '\nEmail text:\n' + text.slice(0, MAX_EMAIL_CHARS);
   const out = await callClaudeSonnet(env, { system, user, maxTokens: 1200 });
   if (out.error) return fallback;
@@ -275,14 +275,25 @@ function normalizeExtracted(parsed, fallback) {
       airline: str(f.airline, 80),
       flightNumber: normalizeFlightNumber(f.flightNumber || f.flight),
       confirmationNumber: str(f.confirmationNumber || f.confirmation || f.recordLocator || f.bookingReference, 80),
+      recordLocator: str(f.recordLocator || f.bookingReference || f.confirmationNumber || f.confirmation, 80),
+      bookingReference: str(f.bookingReference || f.recordLocator || f.confirmationNumber || f.confirmation, 80),
       departAirport: str(f.departAirport || f.from || f.origin, 80),
-      departCity: str(f.departCity, 80),
+      departCity: str(f.departCity || f.originCity, 80),
       departAt: str(f.departAt || f.departure || f.departureTime, 80),
+      departTerminal: str(f.departTerminal || f.originTerminal || f.departureTerminal, 40),
+      departGate: str(f.departGate || f.originGate || f.departureGate, 30),
       arriveAirport: str(f.arriveAirport || f.to || f.destination, 80),
-      arriveCity: str(f.arriveCity, 80),
+      arriveCity: str(f.arriveCity || f.destinationCity, 80),
       arriveAt: str(f.arriveAt || f.arrival || f.arrivalTime, 80),
-      terminal: str(f.terminal, 40),
-      seat: str(f.seat, 30),
+      arriveTerminal: str(f.arriveTerminal || f.destinationTerminal || f.arrivalTerminal, 40),
+      arriveGate: str(f.arriveGate || f.destinationGate || f.arrivalGate, 30),
+      terminal: str(f.terminal || f.departTerminal || f.arriveTerminal, 40),
+      gate: str(f.gate || f.departGate || f.arriveGate, 30),
+      seat: str(f.seat || f.seatNumber, 30),
+      boardingTime: str(f.boardingTime || f.boarding || f.boardAt, 80),
+      status: str(f.status || f.flightStatus, 40),
+      checkInUrl: str(f.checkInUrl || f.checkinUrl || f.manageBookingUrl, 220),
+      airlineUrl: str(f.airlineUrl || f.airlineWebsite, 220),
     })).filter(isCredibleFlight),
   };
   if ((!out.flights || !out.flights.length) && fallback.flights.length) out.flights = fallback.flights;
@@ -473,7 +484,10 @@ function fallbackExtract({ subject, text }) {
     .filter((f, i, arr) => f.flightNumber && arr.findIndex(x => x.flightNumber === f.flightNumber) === i)
     .slice(0, 6) : [];
   const conf = travelish ? ((hay.match(/(?:confirmation|booking|reservation|record locator|pnr)[\s#:]*([A-Z0-9]{5,12})/i) || [])[1] || '') : '';
-  flights.forEach(f => { if (conf) f.confirmationNumber = conf; });
+  const gate = travelish ? ((hay.match(/\bgate[\s#:]*([A-Z0-9]{1,5})\b/i) || [])[1] || '') : '';
+  const seat = travelish ? ((hay.match(/\bseat[\s#:]*([0-9]{1,2}[A-Z])\b/i) || [])[1] || '') : '';
+  const terminal = travelish ? ((hay.match(/\bterminal[\s#:]*([A-Z0-9]{1,4})\b/i) || [])[1] || '') : '';
+  flights.forEach(f => { if (conf) { f.confirmationNumber = conf; f.recordLocator = conf; } if (gate) f.gate = gate; if (seat) f.seat = seat; if (terminal) f.terminal = terminal; });
   const hotelName = travelish ? ((hay.match(/(?:hotel|stay|property)[:\s-]+([^\n]{4,90})/i) || [])[1] || '') : '';
   return {
     summary: flights.length ? 'Imported ' + flights.length + ' flight' + (flights.length === 1 ? '' : 's') + '.' : (hotelName ? 'Imported hotel details.' : 'No travel facts found.'),
@@ -491,14 +505,25 @@ function normalizeFlight(f, receivedAt) {
     airline: str(f.airline, 80),
     flightNumber,
     confirmationNumber: str(f.confirmationNumber, 80),
+    recordLocator: str(f.recordLocator || f.bookingReference || f.confirmationNumber, 80),
+    bookingReference: str(f.bookingReference || f.recordLocator || f.confirmationNumber, 80),
     departAirport: str(f.departAirport, 80),
     departCity: str(f.departCity, 80),
     departAt: str(f.departAt, 80),
+    departTerminal: str(f.departTerminal, 40),
+    departGate: str(f.departGate, 30),
     arriveAirport: str(f.arriveAirport, 80),
     arriveCity: str(f.arriveCity, 80),
     arriveAt: str(f.arriveAt, 80),
+    arriveTerminal: str(f.arriveTerminal, 40),
+    arriveGate: str(f.arriveGate, 30),
     terminal: str(f.terminal, 40),
+    gate: str(f.gate, 30),
     seat: str(f.seat, 30),
+    boardingTime: str(f.boardingTime, 80),
+    status: str(f.status, 40),
+    checkInUrl: str(f.checkInUrl, 220),
+    airlineUrl: str(f.airlineUrl, 220),
     source: 'email',
     importedAt: receivedAt,
   };

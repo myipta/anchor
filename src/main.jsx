@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 17 · Jun 21';
+const BUILD='build 18 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -163,6 +163,145 @@ function anchoredRefs(trip){
   const refs=(trip.anchoredPlaces||[]).map(id=>({kind:'curated',id}));
   (trip.scratchpad||[]).forEach(s=>{ if(s.status==='anchored') refs.push({kind:'scratch',id:s.id}); });
   return refs;
+}
+
+
+/* ── FLIGHT HELPERS ── */
+function flightDateLocal(v){
+  if(!v) return '';
+  const str=String(v).trim();
+  const m=str.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  const d=new Date(str);
+  return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10);
+}
+function flightTimeLocal(v){
+  if(!v) return '';
+  const str=String(v).trim();
+  const local=str.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
+  if(local){
+    let h=Number(local[1]);
+    const suffix=local[3]?local[3].toUpperCase():(h>=12?'PM':'AM');
+    if(!local[3]&&h>12) h-=12;
+    if(!local[3]&&h===0) h=12;
+    return h+':'+local[2]+' '+suffix;
+  }
+  const d=new Date(str);
+  return Number.isNaN(d.getTime())?str:d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function flightDateTimeLocal(v){
+  if(!v) return '';
+  const date=flightDateLocal(v);
+  const time=flightTimeLocal(v);
+  if(date&&time) return fmtDate(date)+' · '+time;
+  return time||date||String(v);
+}
+function flightAirportLabel(value){
+  return String(value||'').replace(/\b(hnd|nrt|den|sfo|jfk|lga|ewr)\b/ig,m=>m.toUpperCase()).replace(/haneda/i,'Haneda').replace(/narita/i,'Narita').replace(/denver/i,'Denver');
+}
+function flightRouteLabel(f){
+  const dep=flightAirportLabel(f?.departAirport||f?.departCity||'');
+  const arr=flightAirportLabel(f?.arriveAirport||f?.arriveCity||'');
+  return [dep,arr].filter(Boolean).join(' → ');
+}
+function flightTitle(f){ return [f?.airline,f?.flightNumber].filter(Boolean).join(' ')||'Flight'; }
+function tripDestinationKey(trip){ return String(trip?.destination||'').replace(/[^a-z]/gi,'').toLowerCase(); }
+const DEST_AIRPORT_ALIASES={
+  tokyo:['tokyo','haneda','narita','hnd','nrt'],
+  denver:['denver','den'],
+  newyork:['newyork','jfk','lga','ewr','newark'],
+  paris:['paris','cdg','ory'],
+  london:['london','lhr','lgw','lcy','stansted','stn'],
+  sanfrancisco:['sanfrancisco','sfo'],
+  losangeles:['losangeles','lax'],
+};
+function isDestinationArrivalFlight(trip,f){
+  const place=[f?.arriveAirport,f?.arriveCity].filter(Boolean).join(' ');
+  const placeKey=place.replace(/[^a-z]/gi,'').toLowerCase();
+  const destKey=tripDestinationKey(trip);
+  const aliasEntry=DEST_AIRPORT_ALIASES[destKey]||Object.entries(DEST_AIRPORT_ALIASES).find(([k])=>destKey.includes(k)||k.includes(destKey))?.[1]||[];
+  return Boolean(placeKey&&(aliasEntry.some(a=>placeKey.includes(String(a).toLowerCase()))||(destKey&&placeKey.includes(destKey))));
+}
+function flightStatusUrl(f){
+  const direct=f?.statusUrl||f?.checkInUrl||f?.checkinUrl||f?.manageBookingUrl||f?.airlineUrl;
+  if(direct) return direct;
+  const q=[f?.airline,f?.flightNumber,'flight status'].filter(Boolean).join(' ');
+  return q?'https://www.google.com/search?q='+encodeURIComponent(q):'';
+}
+function flightDetailBits(f,phase='all'){
+  const bits=[];
+  const seen=new Set();
+  const add=(label,value)=>{ const v=String(value||'').trim(); const key=label+'|'+v; if(v&&!seen.has(key)){seen.add(key); bits.push({label,value:v});} };
+  add('Status',f?.status||f?.flightStatus);
+  add('Conf',f?.confirmationNumber||f?.recordLocator||f?.bookingReference);
+  if(phase==='departure'){
+    add('Terminal',f?.departTerminal||f?.originTerminal||f?.terminal);
+    add('Gate',f?.departGate||f?.originGate||f?.gate);
+    add('Boarding',f?.boardingTime||f?.boarding||f?.boardAt);
+  }else if(phase==='arrival'){
+    add('Terminal',f?.arriveTerminal||f?.destinationTerminal||f?.arrivalTerminal||f?.terminal);
+    add('Gate',f?.arriveGate||f?.destinationGate||f?.arrivalGate||f?.gate);
+  }else{
+    add('Dep T',f?.departTerminal||f?.originTerminal);
+    add('Dep Gate',f?.departGate||f?.originGate);
+    add('Arr T',f?.arriveTerminal||f?.destinationTerminal||f?.arrivalTerminal);
+    add('Arr Gate',f?.arriveGate||f?.destinationGate||f?.arrivalGate);
+    add('Terminal',(!f?.departTerminal&&!f?.arriveTerminal)&&f?.terminal);
+    add('Gate',(!f?.departGate&&!f?.arriveGate)&&f?.gate);
+    add('Boarding',f?.boardingTime||f?.boarding||f?.boardAt);
+  }
+  add('Seat',f?.seat);
+  return bits.slice(0,7);
+}
+function flightEventsForDay(trip,dayDate){
+  if(!dayDate) return [];
+  const out=[];
+  (Array.isArray(trip?.flights)?trip.flights:[]).forEach((f,i)=>{
+    const id=f.id||f.flightNumber||i;
+    if(flightDateLocal(f.departAt)===dayDate) out.push({id:'dep-'+id,phase:'departure',label:'Departure',time:flightTimeLocal(f.departAt)||'Departure',sort:String(f.departAt||''),flight:f});
+    if(flightDateLocal(f.arriveAt)===dayDate) out.push({id:'arr-'+id,phase:'arrival',label:'Arrival',time:flightTimeLocal(f.arriveAt)||'Arrival',sort:String(f.arriveAt||''),flight:f});
+  });
+  return out.sort((a,b)=>String(a.sort||'').localeCompare(String(b.sort||'')));
+}
+function FlightDetailChips({bits}){
+  if(!bits||!bits.length) return null;
+  return <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:7}}>{bits.map(b=>(
+    <span key={b.label+b.value} style={{display:'inline-flex',alignItems:'center',gap:4,border:'1px solid #CFE4F6',background:'#F4FAFF',color:'#2F6CA3',borderRadius:999,padding:'3px 8px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:700}}><span style={{color:'#6D99BE'}}>{b.label}</span>{b.value}</span>
+  ))}</div>;
+}
+function FlightStatusLink({flight,label='Live status'}){
+  const url=flightStatusUrl(flight);
+  if(!url) return null;
+  return <a href={url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{display:'inline-flex',alignItems:'center',gap:5,color:'#2F6CA3',textDecoration:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:800,whiteSpace:'nowrap'}}>{label} <span aria-hidden="true">↗</span></a>;
+}
+function FlightInfoCard({event}){
+  const f=event.flight;
+  const bits=flightDetailBits(f,event.phase);
+  const primary=event.phase==='departure'?flightTimeLocal(f.departAt):flightTimeLocal(f.arriveAt);
+  const secondary=event.phase==='departure'?flightDateTimeLocal(f.arriveAt):flightDateTimeLocal(f.departAt);
+  return <div style={{display:'flex',gap:11,alignItems:'stretch',marginBottom:10}}>
+    <div style={{width:50,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',paddingTop:13}}>
+      <span style={{fontFamily:"'Geist Mono',monospace",fontSize:13,fontWeight:600,color:'#2F6CA3'}}>{primary||event.time}</span>
+    </div>
+    <div style={{flex:1,minWidth:0,background:'#fff',border:'1px solid #D9EAF8',borderRadius:16,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 5px 14px rgba(47,108,163,0.06)'}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:11}}>
+        <div style={{width:42,height:42,borderRadius:12,background:'linear-gradient(135deg,#BFE2FF,#6E9FEA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>✈</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+            <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',color:'#2F6CA3',background:'#E9F3FF',borderRadius:999,padding:'3px 8px'}}>{event.label}</span>
+            {f.flightNumber&&<span style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#6C6E8E'}}>{f.flightNumber}</span>}
+          </div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',marginTop:5,lineHeight:1.15}}>{flightTitle(f)}</div>
+          <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#6C6E8E',marginTop:3}}>{flightRouteLabel(f)||'Flight details'}{secondary?' · '+(event.phase==='departure'?'Arrives ':'Departs ')+secondary:''}</div>
+          <FlightDetailChips bits={bits}/>
+        </div>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginTop:9,paddingTop:9,borderTop:'1px solid #EEF6FD'}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#6C6E8E',lineHeight:1.35}}>Use this when planning airport, hotel, luggage, and first meal timing.</div>
+        <FlightStatusLink flight={f}/>
+      </div>
+    </div>
+  </div>;
 }
 
 function bp(id) {
@@ -419,11 +558,13 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
                       </div>
                       <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
                       <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:4}}>{s.area}</div>
+                      <FlightDetailChips bits={s.details}/>
                     </div>
                   </div>
                   <div style={{display:'flex',gap:9,padding:'11px 14px',background:'#F4FAFF',borderTop:'1px solid #DCEEFE'}}>
                     <SparkleIco size={16} color="#2F6CA3"/>
-                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#315D7D',lineHeight:1.4}}>{s.note}</div>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#315D7D',lineHeight:1.4,flex:1}}>{s.note}</div>
+                    {s.statusUrl&&<FlightStatusLink flight={{statusUrl:s.statusUrl}}/>}
                   </div>
                 </div>
               ):isAnc?(
@@ -913,32 +1054,11 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
   const active=!isPreTrip&&!isPostTrip;
   const flights=Array.isArray(trip.flights)?trip.flights:[];
-  const flightDate=v=>{ if(!v) return ''; const str=String(v); const m=str.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'); const d=new Date(str); return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10); };
-  const flightTime=v=>{
-    if(!v) return '';
-    const str=String(v).trim();
-    const local=str.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
-    if(local){
-      let h=Number(local[1]);
-      const suffix=local[3]?local[3].toUpperCase():(h>=12?'PM':'AM');
-      if(!local[3]&&h>12) h-=12;
-      if(!local[3]&&h===0) h=12;
-      return h+':'+local[2]+' '+suffix;
-    }
-    const d=new Date(str);
-    return Number.isNaN(d.getTime())?str:d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  };
-  const flightAirport=f=>String([f.arriveAirport,f.arriveCity,f.departAirport,f.departCity].filter(Boolean).join(' '));
-  const destKey=String(trip.destination||'').replace(/[^a-z]/gi,'').toLowerCase();
-  const destinationFlight=f=>{
-    const airport=flightAirport(f);
-    const airportKey=airport.replace(/[^a-z]/gi,'').toLowerCase();
-    return /tokyo|haneda|narita|hnd|nrt/i.test(airport)||Boolean(destKey&&airportKey.includes(destKey));
-  };
+  const destinationFlight=f=>isDestinationArrivalFlight(trip,f);
   const dayDate=trip.arrivalDate?addDays(trip.arrivalDate,viewDay):'';
-  const arrivalFlights=flights.filter(f=>destinationFlight(f)&&flightDate(f.arriveAt)===(dayDate||trip.arrivalDate)).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')));
+  const arrivalFlights=flights.filter(f=>destinationFlight(f)&&flightDateLocal(f.arriveAt)===(dayDate||trip.arrivalDate)).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')));
   const primaryArrival=arrivalFlights[0]||flights.filter(destinationFlight).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')))[0]||null;
-  const arrivalArea=f=>String(f?.arriveAirport||f?.arriveCity||'Tokyo').replace(/\b(HND|NRT)\b/ig,m=>m.toUpperCase()).replace(/haneda/i,'Haneda').replace(/narita/i,'Narita');
+  const arrivalArea=f=>flightAirportLabel(f?.arriveAirport||f?.arriveCity||'the airport');
 
   // A planned itinerary for this day takes over from the AI suggestions.
   const planned=active?dayStopsRefs(trip,viewDay).map(r=>resolveStop(trip,r)).filter(Boolean):[];
@@ -972,7 +1092,12 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
     ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
     : pool.slice(0,2);
 
-  const flightStops=arrivalFlights.map((f,i)=>({id:'flight-'+(f.id||i),kind:'flight',name:[f.airline,f.flightNumber].filter(Boolean).join(' ')||'Arrival flight',flightNumber:f.flightNumber||'',area:[f.departAirport,f.arriveAirport].filter(Boolean).join(' → ')||arrivalArea(f),time:flightTime(f.arriveAt)||'Arrival',note:'You land at '+(arrivalArea(f)||'the airport')+'. Anchor can plan the first move around luggage, transit, and energy after the flight.'}));
+  const flightStops=arrivalFlights.map((f,i)=>{
+    const bits=flightDetailBits(f,'arrival');
+    const gate=bits.find(b=>b.label==='Gate')?.value;
+    const terminal=bits.find(b=>b.label==='Terminal')?.value;
+    return {id:'flight-'+(f.id||i),kind:'flight',name:flightTitle(f),flightNumber:f.flightNumber||'',area:flightRouteLabel(f)||arrivalArea(f),time:flightTimeLocal(f.arriveAt)||'Arrival',details:bits,statusUrl:flightStatusUrl(f),note:'You land at '+(arrivalArea(f)||'the airport')+(terminal||gate?' — '+[terminal&&('Terminal '+terminal),gate&&('Gate '+gate)].filter(Boolean).join(', '):'')+'. Anchor can plan the first move around luggage, transit, and energy after the flight.'};
+  });
   const hotelStop=todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.'}]:[];
   const fixedStops=[...flightStops,...hotelStop];
   const base=fixedStops.length;
@@ -1056,14 +1181,15 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
           <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,#BFE2FF,#6E9FEA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>✈</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#2F6CA3',letterSpacing:'0.06em',textTransform:'uppercase'}}>Arrival context</div>
-            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',marginTop:2}}>{flightTime(primaryArrival.arriveAt)||'Arrival'} at {arrivalArea(primaryArrival)||'the airport'}</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',marginTop:2}}>{flightTimeLocal(primaryArrival.arriveAt)||'Arrival'} at {arrivalArea(primaryArrival)||'the airport'}</div>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.35,marginTop:4}}>Search can now plan around your landing time, airport, luggage, and first meal.</div>
+            <FlightDetailChips bits={flightDetailBits(primaryArrival,'arrival')}/>
           </div>
         </div>
         <div style={{display:'flex',gap:8,marginTop:11,overflowX:'auto'}}>
           {[
             'Find something after I land at '+(arrivalArea(primaryArrival)||'the airport'),
-            'Easy food after a '+(flightTime(primaryArrival.arriveAt)||'flight')+' arrival',
+            'Easy food after a '+(flightTimeLocal(primaryArrival.arriveAt)||'flight')+' arrival',
             'Best route from '+(arrivalArea(primaryArrival)||'airport')+' to my hotel'
           ].map(q=>(
             <button key={q} onClick={()=>goTab&&goTab('search',q)} style={{flexShrink:0,border:'1px solid #CFE4F6',background:'#F4FAFF',color:'#2F6CA3',borderRadius:999,padding:'8px 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{q}</button>
@@ -1093,7 +1219,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   );
 
   // Day-by-day itinerary strip — visible in Today (pre-trip and during).
-  const itinDays=Array.from({length:totalNights},(_,i)=>({i,date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',stops:dayStopsRefs(trip,i).length}));
+  const itinDays=Array.from({length:totalNights},(_,i)=>{ const date=trip.arrivalDate?addDays(trip.arrivalDate,i):''; return {i,date,stops:dayStopsRefs(trip,i).length,flights:flightEventsForDay(trip,date).length}; });
   const ItineraryStrip=()=>(
     <div style={{padding:'4px 0 2px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 18px 9px'}}>
@@ -1111,8 +1237,8 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:isToday?'#6C5CE7':'#9092AD'}}>Day {d.i+1}{isToday?' · Today':''}</div>
               <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:14,color:'#16172A',marginTop:3,lineHeight:1.1}}>{d.date?fmtDate(d.date):'—'}</div>
               {todayAnchor&&<div style={{display:'flex',alignItems:'center',gap:5,marginTop:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:600,color:'#6C5CE7',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><AnchorIco size={10} color="#6C5CE7"/>{todayAnchor.area}</div>}
-              <div style={{display:'flex',alignItems:'center',gap:5,marginTop:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:d.stops>0?'#0E865B':'#9092AD'}}>
-                {d.stops>0?<><span style={{width:6,height:6,borderRadius:'50%',background:'#14A06E'}}/>{d.stops} {d.stops===1?'stop':'stops'}</>:'+ add places'}
+              <div style={{display:'flex',alignItems:'center',gap:5,marginTop:5,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11.5,fontWeight:600,color:(d.stops+d.flights)>0?'#0E865B':'#9092AD'}}>
+                {(d.stops+d.flights)>0?<><span style={{width:6,height:6,borderRadius:'50%',background:'#14A06E'}}/>{d.flights?d.flights+' flight'+(d.flights===1?'':'s'):d.stops+' '+(d.stops===1?'stop':'stops')}</>:'+ add places'}
               </div>
             </button>
           );
@@ -1996,33 +2122,13 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   const hotelName=(anchor0&&anchor0.name)||'';
   const needsSetup=tripNeedsSetup(trip);
   const flights=Array.isArray(trip.flights)?trip.flights:[];
-  const flightDate=v=>{ if(!v) return ''; const str=String(v); const m=str.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'); const d=new Date(str); return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10); };
-  const flightTime=v=>{
-    if(!v) return '';
-    const str=String(v).trim();
-    const local=str.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
-    if(local){
-      let h=Number(local[1]);
-      const suffix=local[3]?local[3].toUpperCase():(h>=12?'PM':'AM');
-      if(!local[3]&&h>12) h-=12;
-      if(!local[3]&&h===0) h=12;
-      return h+':'+local[2]+' '+suffix;
-    }
-    const d=new Date(str);
-    return Number.isNaN(d.getTime())?str:d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  };
-  const flightPlace=f=>String(f?.arriveAirport||f?.arriveCity||'').replace(/haneda/i,'Haneda').replace(/narita/i,'Narita')||'the airport';
-  const searchDestKey=String(trip.destination||'').replace(/[^a-z]/gi,'').toLowerCase();
-  const destinationFlight=f=>{
-    const place=[f.arriveAirport,f.arriveCity].filter(Boolean).join(' ');
-    const placeKey=place.replace(/[^a-z]/gi,'').toLowerCase();
-    return /tokyo|haneda|narita|hnd|nrt/i.test(place)||Boolean(searchDestKey&&placeKey.includes(searchDestKey));
-  };
+  const flightPlace=f=>flightAirportLabel(f?.arriveAirport||f?.arriveCity||'the airport');
+  const destinationFlight=f=>isDestinationArrivalFlight(trip,f);
   const arrivalFlight=flights.filter(destinationFlight).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')))[0]||null;
   const greet=needsSetup
     ? `Hey — I'm your ${localLabel}, and I'll help you plan ${destination} right here. To start: where are you staying (a hotel or a neighborhood), and roughly when's the trip?`
     : (hotelArea
-      ? (arrivalFlight?`Hey — I'm your ${localLabel}. I see you land at ${flightPlace(arrivalFlight)} around ${flightTime(arrivalFlight.arriveAt)||'arrival time'} and you're staying around ${hotelArea}. Want an easy first move after landing, or something near the hotel?`:`Hey — I'm your ${localLabel}. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`)
+      ? (arrivalFlight?`Hey — I'm your ${localLabel}. I see you land at ${flightPlace(arrivalFlight)} around ${flightTimeLocal(arrivalFlight.arriveAt)||'arrival time'} and you're staying around ${hotelArea}. Want an easy first move after landing, or something near the hotel?`:`Hey — I'm your ${localLabel}. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`)
       : `Hey — I'm your ${localLabel}. Tell me what you're into and I'll point you to places you'd actually love.`);
   // Conversation is owned by App (survives tab switch + reload); seed the
   // greeting once if there's nothing stored yet.
@@ -2072,8 +2178,8 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
     anchored:[...(trip.scratchpad||[]).filter(s=>s.status==='anchored').map(s=>s.name),
       ...((trip.anchoredPlaces||[]).map(curatedName))].filter(Boolean).slice(0,25),
     ideas:(trip.scratchpad||[]).filter(s=>s.status!=='anchored').map(s=>s.name).filter(Boolean).slice(0,25),
-    flights:flights.map(f=>({airline:f.airline,flightNumber:f.flightNumber,departAirport:f.departAirport,departAt:f.departAt,arriveAirport:f.arriveAirport,arriveCity:f.arriveCity,arriveAt:f.arriveAt,terminal:f.terminal})).slice(0,8),
-    arrivalFlight:arrivalFlight?{airline:arrivalFlight.airline,flightNumber:arrivalFlight.flightNumber,arriveAirport:arrivalFlight.arriveAirport,arriveCity:arrivalFlight.arriveCity,arriveAt:arrivalFlight.arriveAt,terminal:arrivalFlight.terminal}:null,
+    flights:flights.map(f=>({airline:f.airline,flightNumber:f.flightNumber,confirmationNumber:f.confirmationNumber,recordLocator:f.recordLocator,departAirport:f.departAirport,departCity:f.departCity,departAt:f.departAt,departTerminal:f.departTerminal,departGate:f.departGate,arriveAirport:f.arriveAirport,arriveCity:f.arriveCity,arriveAt:f.arriveAt,arriveTerminal:f.arriveTerminal,arriveGate:f.arriveGate,terminal:f.terminal,gate:f.gate,seat:f.seat,boardingTime:f.boardingTime,status:f.status,checkInUrl:f.checkInUrl,airlineUrl:f.airlineUrl})).slice(0,8),
+    arrivalFlight:arrivalFlight?{airline:arrivalFlight.airline,flightNumber:arrivalFlight.flightNumber,confirmationNumber:arrivalFlight.confirmationNumber,recordLocator:arrivalFlight.recordLocator,arriveAirport:arrivalFlight.arriveAirport,arriveCity:arrivalFlight.arriveCity,arriveAt:arrivalFlight.arriveAt,arriveTerminal:arrivalFlight.arriveTerminal,arriveGate:arrivalFlight.arriveGate,terminal:arrivalFlight.terminal,gate:arrivalFlight.gate,seat:arrivalFlight.seat,status:arrivalFlight.status,checkInUrl:arrivalFlight.checkInUrl,airlineUrl:arrivalFlight.airlineUrl}:null,
   });
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
@@ -2165,7 +2271,8 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
       </div>
       {arrivalFlight&&(
         <div style={{flexShrink:0,padding:'9px 16px',background:'#F4FAFF',borderBottom:'1px solid #DCEEFE',display:'flex',gap:8,overflowX:'auto',alignItems:'center'}}>
-          <span style={{flexShrink:0,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#2F6CA3',letterSpacing:'0.05em',textTransform:'uppercase'}}>Landing {flightTime(arrivalFlight.arriveAt)||''} · {flightPlace(arrivalFlight)}</span>
+          <span style={{flexShrink:0,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#2F6CA3',letterSpacing:'0.05em',textTransform:'uppercase'}}>Landing {flightTimeLocal(arrivalFlight.arriveAt)||''} · {flightPlace(arrivalFlight)}</span>
+          {flightDetailBits(arrivalFlight,'arrival').slice(0,3).map(b=><span key={b.label+b.value} style={{flexShrink:0,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#2F6CA3',background:'#fff',border:'1px solid #CFE4F6',borderRadius:999,padding:'4px 8px'}}>{b.label} {b.value}</span>)}
           {[
             'Find something after I land at '+flightPlace(arrivalFlight),
             'Easy first meal after landing',
@@ -2324,7 +2431,7 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
   const flights=Array.isArray(trip.flights)?trip.flights:[];
   const inbox=Array.isArray(trip.travelInbox)?trip.travelInbox:[];
   const documents=Array.isArray(trip.documents)?trip.documents:[];
-  const flightTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+  const flightTime=flightDateTimeLocal;
   const days=Array.from({length:trip.nights||0},(_,i)=>({
     date:trip.arrivalDate?addDays(trip.arrivalDate,i):'',
     label:`Day ${i+1}`,
@@ -2396,9 +2503,10 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
                 <div style={{width:42,height:42,borderRadius:12,flexShrink:0,background:'linear-gradient(135deg,#5BD6B0,#8B72FB)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>✈</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,color:'#16172A'}}>{[f.airline,f.flightNumber].filter(Boolean).join(' ')||'Flight'}</div>
-                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:2}}>{[f.departAirport,f.arriveAirport].filter(Boolean).join(' → ')}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:2}}>{flightRouteLabel(f)}</div>
                   <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:2}}>{[flightTime(f.departAt),flightTime(f.arriveAt)].filter(Boolean).join(' · ')}</div>
-                  {f.confirmationNumber&&<div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#B6B8CC',marginTop:4}}>CONF {f.confirmationNumber}</div>}
+                  <FlightDetailChips bits={flightDetailBits(f,'all')}/>
+                  <div style={{marginTop:7}}><FlightStatusLink flight={f}/></div>
                 </div>
               </div>
             ))}
@@ -2407,7 +2515,7 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
         <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'#9092AD',margin:'18px 0 10px'}}>Days</div>
         {days.map((day,i)=>{
           const isToday=day.date===today;
-          const nStops=dayStopsRefs(trip,i).length;
+          const nStops=dayStopsRefs(trip,i).length+flightEventsForDay(trip,day.date).length;
           return(
             <div key={i} onClick={()=>push({type:'day',dayIndex:i})} style={{marginBottom:12,background:'#fff',borderRadius:20,overflow:'hidden',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',border:isToday?'2px solid #6C5CE7':'2px solid transparent',cursor:'pointer'}}>
               <div style={{padding:'13px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',background:isToday?'#F1EEFF':'transparent'}}>
@@ -2417,7 +2525,7 @@ function TripOverlay({pop,push,trip,user,cloud,onLogout,onSignIn}){
                     {isToday&&<span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,color:'#6C5CE7'}}>Today</span>}
                   </div>
                   <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A'}}>{day.date?fmtDateLong(day.date):''}</div>
-                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{nStops>0?`${nStops} ${nStops===1?'stop':'stops'} planned`:'Tap to plan'}{day.anchor?` · ${day.anchor.name}`:''}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:2}}>{nStops>0?`${nStops} ${nStops===1?'item':'items'} planned`:'Tap to plan'}{day.anchor?` · ${day.anchor.name}`:''}</div>
                 </div>
                 <ChevRight/>
               </div>
@@ -2618,6 +2726,7 @@ function DayPlanOverlay({dayIndex,pop,push,trip,onAdd,onRemove,onMove,onOptimize
   const refs=dayStopsRefs(trip,dayIndex);
   const stops=refs.map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
   const pool=unscheduledPool(trip).map(r=>({ref:r,d:resolveStop(trip,r)})).filter(x=>x.d);
+  const dayFlights=flightEventsForDay(trip,day.date);
   const [opt,setOpt]=useState({loading:false,rationale:'',err:null});
 
   const optimize=async()=>{
@@ -2655,6 +2764,13 @@ function DayPlanOverlay({dayIndex,pop,push,trip,onAdd,onRemove,onMove,onOptimize
         )}
         {opt.err&&<div style={{background:'#FFF1EA',borderRadius:12,padding:'10px 13px',marginBottom:14,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#8a4a2c'}}>{opt.err}</div>}
 
+        {dayFlights.length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,color:'#2F6CA3',letterSpacing:'0.1em',textTransform:'uppercase',margin:'0 0 8px 50px'}}>Flights</div>
+            {dayFlights.map(ev=><FlightInfoCard key={ev.id} event={ev}/>) }
+          </div>
+        )}
+
         {hotel&&(
           <div style={{display:'flex',gap:11,alignItems:'stretch',marginBottom:10}}>
             <div style={{width:50,flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',paddingTop:14}}>
@@ -2676,7 +2792,7 @@ function DayPlanOverlay({dayIndex,pop,push,trip,onAdd,onRemove,onMove,onOptimize
         )}
         {stops.length===0?(
           <div style={{textAlign:'center',padding:'8px 24px 24px'}}>
-            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#9092AD',lineHeight:1.5}}>Add places below, then let Anchor arrange your day around your hotel.</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:14.5,color:'#9092AD',lineHeight:1.5}}>{dayFlights.length?'Add places below, then let Anchor arrange the rest of your day around your flight and hotel.':'Add places below, then let Anchor arrange your day around your hotel.'}</div>
           </div>
         ):(
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
