@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 18 · Jun 21';
+const BUILD='build 19 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -1051,7 +1051,8 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   const isPostTrip=dayIndex>=totalNights;
   const viewDay=Math.max(0,Math.min(totalNights-1,dayIndex));
   const todayAnchor=trip.anchors?.[0]||null;
-  const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
+  const isTokyoTrip=/tokyo|japan/i.test(String(trip.destination||''));
+  const areaLabel=(todayAnchor&&(isTokyoTrip?AREA_LABELS[todayAnchor.area]:todayAnchor.area))||todayAnchor?.area||trip.destination||'Trip';
   const active=!isPreTrip&&!isPostTrip;
   const flights=Array.isArray(trip.flights)?trip.flights:[];
   const destinationFlight=f=>isDestinationArrivalFlight(trip,f);
@@ -1070,15 +1071,16 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   const tasteKey=JSON.stringify(taste);
   const hayOf=p=>((p.name||'')+' '+(p.catLabel||'')+' '+(p.area||'')+' '+(p.note||p.reason||p.digest||'')).toLowerCase();
   const pool=useMemo(()=>{
+    if(!isTokyoTrip) return [];
     let pl=getSuggestions(trip.prefs||[],8,[]);
     if(dislikeTags.length) pl=pl.filter(p=>{const h=hayOf(p);return !dislikeTags.some(t=>t&&h.includes(t));});
     if(likeTags.length) pl=[...pl].sort((a,b)=>((likeTags.some(t=>hayOf(b).includes(t))?1:0)-(likeTags.some(t=>hayOf(a).includes(t))?1:0)));
     return pl;
-  },[JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
+  },[isTokyoTrip,JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
   const [ai,setAi]=useState(null);        // [{id,reason}] top AI picks, or null
   const [aiLoading,setAiLoading]=useState(false);
   useEffect(()=>{
-    if(!active||usePlan){return;}
+    if(!active||usePlan||!isTokyoTrip){ setAi(null); setAiLoading(false); return; }
     let dead=false; setAiLoading(true);
     API.suggest([...(trip.prefs||[]),...likeTags],pool).then(ranked=>{
       if(dead) return;
@@ -1086,11 +1088,11 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
       setAi(ranked?ranked.slice(0,2).map(r=>({id:r.id,reason:r.reason})).filter(x=>PLACES[x.id]):null);
     });
     return ()=>{dead=true;};
-  },[active,usePlan,JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
+  },[active,usePlan,isTokyoTrip,JSON.stringify(trip.prefs),tasteKey]); // eslint-disable-line
 
-  const suggs=(ai&&ai.length)
+  const suggs=isTokyoTrip?((ai&&ai.length)
     ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
-    : pool.slice(0,2);
+    : pool.slice(0,2)):[];
 
   const flightStops=arrivalFlights.map((f,i)=>{
     const bits=flightDetailBits(f,'arrival');
@@ -1108,6 +1110,8 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
     : [...fixedNumbered, ...suggs.map((p,i)=>({...p,kind:'suggest',num:base+1+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading}))];
   const PINPOS=[[32,60],[68,30],[50,72],[72,55],[30,38],[55,46]];
   const mapItems=usePlan?planned:suggs;
+  const needsLocalSearch=!isTokyoTrip&&!usePlan;
+  const dayOpen=id=>{if(PLACES[id])push({type:'place',id});};
   const dayPins=[
     ...(todayAnchor?[{id:'hotel-0',x:55,y:40,num:1,kind:'anchor',label:todayAnchor.area}]:[]),
     ...mapItems.map((p,i)=>({id:p.id,x:(PINPOS[i]||[50,50])[0],y:(PINPOS[i]||[50,50])[1],num:base+1+i,kind:usePlan?'anchor':'suggest'})),
@@ -1171,6 +1175,41 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
       <button onClick={onCreateTrip} aria-label="Create trip" style={{width:40,height:40,borderRadius:12,border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
+    </div>
+  );
+
+
+  const LocalSearchPrompt=()=> !needsLocalSearch?null:(
+    <div style={{padding:'10px 18px 14px'}}>
+      <div style={{background:'#fff',border:'1px solid #E3E5F0',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)'}}>
+        <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A'}}>Build this day from live {trip.destination||'local'} places</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.4,marginTop:5}}>Today will use your flights, hotels, anchors, and saved places here. It will not fill {trip.destination||'this trip'} with Tokyo defaults.</div>
+        <button onClick={()=>goTab&&goTab('search','Find places near my hotel in '+(trip.destination||'this city')+' for today.')} style={{marginTop:11,width:'100%',border:'none',borderRadius:12,background:'#6C5CE7',color:'#fff',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:14,padding:'11px',cursor:'pointer'}}>Find local places</button>
+      </div>
+    </div>
+  );
+
+  const TodayListView=()=> (
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      {dayStops.map(s=>{
+        const isFlight=s.kind==='flight', isHotel=s.kind==='hotel', isAction=s.kind==='suggest';
+        return <div key={s.id} onClick={()=>!isHotel&&!isFlight&&dayOpen(s.id)} style={{background:'#fff',border:'1px solid '+(isFlight?'#D9EAF8':'#ECEDF6'),borderRadius:14,padding:'12px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:(!isHotel&&!isFlight&&PLACES[s.id])?'pointer':'default'}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:11}}>
+            <div style={{width:34,height:34,borderRadius:10,background:isFlight?'#E9F3FF':isHotel?'#E4DEFF':'#F1EEFF',color:isFlight?'#2F6CA3':isHotel?'#5A48D6':'#6C5CE7',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Geist Mono',monospace",fontWeight:700,fontSize:12,flexShrink:0}}>{isFlight?'✈':s.num}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:600,color:'#6C6E8E'}}>{s.time}</span>
+                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:11,fontWeight:800,letterSpacing:'0.05em',textTransform:'uppercase',color:isFlight?'#2F6CA3':isHotel?'#5A48D6':'#6C5CE7'}}>{isFlight?'Flight':isHotel?'Hotel':usePlan?'Planned':'Suggestion'}</span>
+              </div>
+              <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:16,color:'#16172A',marginTop:4,lineHeight:1.15}}>{s.name}</div>
+              <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:3}}>{s.area}</div>
+              {isFlight&&<FlightDetailChips bits={s.details}/>} 
+              {s.note&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#6C6E8E',lineHeight:1.35,marginTop:7}}>{s.note}</div>}
+            </div>
+            {isAction&&<button onClick={e=>{e.stopPropagation();setAdded(a=>({...a,[s.id]:true}));}} style={{border:'1px solid #E3DCFF',background:s.added?'#F1EEFF':'#fff',color:'#6C5CE7',borderRadius:10,padding:'7px 10px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',flexShrink:0}}>{s.added?'Saved':'Save'}</button>}
+          </div>
+        </div>;
+      })}
     </div>
   );
 
@@ -1286,8 +1325,8 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
           <div style={{padding:'4px 0 8px'}}><ItineraryStrip/></div>
           <div style={{padding:'8px 18px 36px'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:12}}>While you wait, explore what's waiting:</div>
-            <button onClick={()=>goTab&&goTab('discover')} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
-              <SparkleIco size={18}/> Browse {trip.destination||'trip'} picks
+            <button onClick={()=>isTokyoTrip?(goTab&&goTab('discover')):(goTab&&goTab('search','Find places for my '+(trip.destination||'trip')+' itinerary.'))} style={{width:'100%',background:'#6C5CE7',color:'#fff',border:'none',borderRadius:16,padding:'14px',fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 6px 18px rgba(108,92,231,0.30)'}}>
+              <SparkleIco size={18}/> {isTokyoTrip?'Browse '+(trip.destination||'trip')+' picks':'Find local places'}
             </button>
           </div>
         </div>
@@ -1353,8 +1392,9 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
           </div>
           <div style={{flex:1,overflowY:'auto',paddingTop:8,paddingBottom:24}}>
             <ArrivalCTA/>
-            <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
+            <Timeline stops={dayStops} onOpen={dayOpen}
               onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
+            <LocalSearchPrompt/>
             <TasteStrip/>
           </div>
         </div>
@@ -1373,8 +1413,9 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
                 <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>{dayStops.length} stops</span>
               </div>
               <ArrivalCTA/>
-              <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
+              <Timeline stops={dayStops} onOpen={dayOpen}
                 onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
+              <LocalSearchPrompt/>
               <TasteStrip/>
             </div>
           </div>
@@ -1382,15 +1423,10 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
       )}
       {layout==='C'&&(
         <div style={{flex:1,overflowY:'auto',padding:'14px 18px 24px'}}>
-          <div style={{borderRadius:18,overflow:'hidden',height:120,position:'relative',boxShadow:'0 1px 2px rgba(22,23,42,0.06)',marginBottom:4}}>
-            <AnchorMap pins={dayPins} connect height="120px"/>
-          </div>
           <ArrivalCTA/>
-          <div style={{margin:'0 -18px'}}>
-            <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
-              onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
-            <TasteStrip/>
-          </div>
+          <TodayListView/>
+          <LocalSearchPrompt/>
+          <TasteStrip/>
         </div>
       )}
     </div>
