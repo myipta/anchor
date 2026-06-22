@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 12 · Jun 21';
+const BUILD='build 13 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -884,7 +884,7 @@ function OnboardingFlow({onComplete,initialData}){
 const segBase={border:'none',background:'transparent',fontWeight:600,fontSize:13,color:'#6C6E8E',padding:'6px 14px',borderRadius:999,cursor:'pointer',transition:'all .15s'};
 const segOn={...segBase,background:'#fff',color:'#16172A',boxShadow:'0 1px 3px rgba(22,23,42,0.14)'};
 
-function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],activeTripId,onSwitchTrip,onCreateTrip,onEditTrip,goTab}){
+function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],activeTripId,onSwitchTrip,onCreateTrip,onEditTrip,onRefreshTrip,refreshingTrip,goTab}){
   const today=todayStr();
   const dayIndex=trip.arrivalDate?daysBetween(trip.arrivalDate,today):0;
   const totalNights=trip.nights||4;
@@ -943,6 +943,31 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   const EditBtn=()=>(
     <button onClick={onEditTrip} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    </button>
+  );
+
+  const inbox=Array.isArray(trip.travelInbox)?trip.travelInbox:[];
+  const lastImport=inbox[0]||null;
+  const importTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?'':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+  const InboxBtn=()=> (
+    <button onClick={()=>push({type:'trip'})} aria-label="Email imports" style={{position:'relative',width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:lastImport?'#F0FFF7':'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={lastImport?'#0E865B':'#4E5072'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+      {inbox.length>0&&<span style={{position:'absolute',top:-4,right:-4,minWidth:17,height:17,padding:'0 4px',borderRadius:999,background:'#14A06E',color:'#fff',fontFamily:"'Geist Mono',monospace",fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid #FAFAFD'}}>{Math.min(inbox.length,9)}</span>}
+    </button>
+  );
+  const RefreshBtn=()=> !onRefreshTrip?null:(
+    <button onClick={onRefreshTrip} aria-label="Refresh imports" disabled={refreshingTrip} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:refreshingTrip?'default':'pointer',opacity:refreshingTrip?0.65:1}}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+  );
+  const HeaderActions=()=> <div style={{display:'flex',alignItems:'center',gap:6}}><InboxBtn/><RefreshBtn/><EditBtn/></div>;
+  const ImportBanner=()=> !lastImport?null:(
+    <button onClick={()=>push({type:'trip'})} style={{width:'100%',marginTop:10,border:'1px solid #BCEBD3',background:'#F0FFF7',borderRadius:13,padding:'9px 11px',display:'flex',alignItems:'center',gap:9,textAlign:'left',cursor:'pointer'}}>
+      <div style={{width:28,height:28,borderRadius:9,background:'#DDF7E9',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E865B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+      <div style={{minWidth:0,flex:1}}>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#0E865B',letterSpacing:'0.06em',textTransform:'uppercase'}}>Email imported</div>
+        <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#27624C',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{lastImport.summary||'Travel email processed'}{importTime(lastImport.receivedAt)?' · '+importTime(lastImport.receivedAt):''}</div>
+      </div>
     </button>
   );
 
@@ -1015,9 +1040,9 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
               <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination}</div>
               <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>Coming soon</div>
             </div>
-            <EditBtn/>
+            <HeaderActions/>
           </div>
-          <TripSwitcher/>
+          <TripSwitcher/><ImportBanner/>
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{padding:'40px 24px 32px',textAlign:'center',background:'linear-gradient(180deg,#F1EEFF 0%,#FAFAFD 100%)'}}>
@@ -1060,9 +1085,9 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
             <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',color:'#FB7242'}}><AnchorIco size={13}/> {trip.destination||'Trip'} wrapped ✈</div>
             <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:24,color:'#16172A',marginTop:3}}>{trip.arrivalDate&&fmtMonthYear(trip.arrivalDate)}</div>
           </div>
-          <EditBtn/>
+          <HeaderActions/>
         </div>
-        <TripSwitcher/>
+        <TripSwitcher/><ImportBanner/>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'48px 24px',textAlign:'center'}}>
         <div style={{fontSize:56,marginBottom:14}}>🎌</div>
@@ -1083,13 +1108,13 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
             <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:26,color:'#16172A',lineHeight:1.05,marginTop:3}}>Day {viewDay+1} · {areaLabel}</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <EditBtn/>
+            <HeaderActions/>
             <button onClick={()=>push({type:'trip'})} style={{width:36,height:36,borderRadius:'50%',border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E5072" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
             </button>
           </div>
         </div>
-        <TripSwitcher/>
+        <TripSwitcher/><ImportBanner/>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E'}}>
             <span style={{fontFamily:"'Geist Mono',monospace",color:'#353756'}}>{trip.arrivalDate&&fmtDateLong(addDays(trip.arrivalDate,viewDay))}</span> · {dayStops.length} stops
@@ -2686,6 +2711,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const [added,setAdded]=useState({});
   const [stack,setStack]=useState([]);
   const [kbOpen,setKbOpen]=useState(false);
+  const [refreshingTrip,setRefreshingTrip]=useState(false);
   useEffect(()=>{
     const vv=window.visualViewport; if(!vv) return;
     let base=vv.height;
@@ -2748,6 +2774,31 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     const next=createTripFrom(tripLibrary,trip,{destination});
     persistLibrary(next); setStack([]); setAdded({}); setTab('search');
   };
+  const refreshTripFromCloud=React.useCallback(async()=>{
+    if(!cloud||!user||refreshingTrip) return false;
+    setRefreshingTrip(true);
+    try{
+      const res=await API.tripGet();
+      const remote=(res&&res.trip&&typeof res.trip==='object')?res.trip:null;
+      if(!remote) return false;
+      const remoteT=Number(res.updated_at)||Number(remote.updatedAt)||0;
+      const local=loadTrip();
+      const localT=Number(local&&local.updatedAt)||Number(tripLibrary.updatedAt)||0;
+      if(remoteT>localT){
+        const next=toTripLibrary(remote);
+        saveTrip(next); setTripLibrary(next); return true;
+      }
+    }catch{}
+    finally{ setRefreshingTrip(false); }
+    return false;
+  },[cloud,user,refreshingTrip,tripLibrary]);
+  useEffect(()=>{
+    if(!cloud||!user) return;
+    const onVisible=()=>{ if(document.visibilityState==='visible') refreshTripFromCloud(); };
+    window.addEventListener('focus',refreshTripFromCloud);
+    document.addEventListener('visibilitychange',onVisible);
+    return ()=>{ window.removeEventListener('focus',refreshTripFromCloud); document.removeEventListener('visibilitychange',onVisible); };
+  },[cloud,user,refreshTripFromCloud]);
   // Concierge conversation lives in App (survives tab switches) + localStorage
   // (survives reload), so it isn't lost when the Search tab unmounts.
   const [convo,setConvo]=useState(()=>loadChat());
@@ -2902,7 +2953,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   return(
     <div style={{flex:1,display:'flex',flexDirection:'column',position:'relative',background:'#FAFAFD',WebkitFontSmoothing:'antialiased'}}>
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
-        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} tripList={tripList} activeTripId={activeTripId} onSwitchTrip={changeActiveTrip} onCreateTrip={createTrip} onEditTrip={()=>setEditingTrip(true)} goTab={changeTab}/>}
+        {tab==='today'    &&<TodayScreen layout={layout} setLayout={setLayout} push={push} added={added} setAdded={setAdded} trip={trip} tripList={tripList} activeTripId={activeTripId} onSwitchTrip={changeActiveTrip} onCreateTrip={createTrip} onEditTrip={()=>setEditingTrip(true)} onRefreshTrip={refreshTripFromCloud} refreshingTrip={refreshingTrip} goTab={changeTab}/>}
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
