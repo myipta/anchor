@@ -45,6 +45,20 @@ export async function onRequest(context) {
   const arrivalDate = (ctx.arrivalDate || '').toString().trim();
   const hotelCoords = (ctx.hotelCoords || '').toString().trim();
   const nights = ctx.nights || 0;
+  const flights = (Array.isArray(ctx.flights) ? ctx.flights : []).slice(0, 8);
+  const arrivalFlight = (ctx.arrivalFlight && typeof ctx.arrivalFlight === 'object') ? ctx.arrivalFlight : null;
+  const fmtFlight = f => {
+    const airline = (f.airline || '').toString().trim();
+    const number = (f.flightNumber || '').toString().trim();
+    const from = (f.departAirport || '').toString().trim();
+    const to = (f.arriveAirport || f.arriveCity || '').toString().trim();
+    const at = (f.arriveAt || '').toString().trim();
+    const terminal = (f.terminal || '').toString().trim();
+    return [airline || number ? `${airline} ${number}`.trim() : '', from || to ? `${from || '?'} -> ${to || '?'}` : '', at ? `arrives ${at}` : '', terminal ? `terminal ${terminal}` : ''].filter(Boolean).join('; ');
+  };
+  const flightLine = arrivalFlight
+    ? `Arrival flight: ${fmtFlight(arrivalFlight) || 'known but details sparse'}`
+    : (flights.length ? `Flights: ${flights.map(fmtFlight).filter(Boolean).join(' | ')}` : 'Flights: none known');
   const haveStay = Boolean(hotelArea || hotelName);
   const haveDates = Boolean(arrivalDate && nights);
   const setupLine = [
@@ -62,12 +76,14 @@ What you know:
 - Interests: ${prefs}
 - ANCHORED places (they're building their trip around these — your strongest taste signal): ${anchored}
 - Saved ideas: ${ideas}
+- Flight context: ${flightLine}
 
 Each turn do ALL of this:
 1) REPLY like a knowledgeable friend: concise, warm, specific. Plain text only — no markdown or asterisks. 2-4 sentences. Focus on their CURRENT message — don't fold in earlier topics or cuisines they asked about before. Set up expectation for the cards (e.g. "Here are some izakaya near you") but you do NOT need to name specific venues — the app shows real results as cards.
 2) RECOMMEND: if they want places, set recommend=true and write "search" = a concise query of GENRE + keywords + timing for the current ask (e.g. "izakaya late night", "specialty coffee", "omakase sushi", "tonkotsu ramen"). CRITICAL: "search" must reflect ONLY their CURRENT request — never combine it with earlier ones. If they discussed tofu kaiseki before and now ask for an izakaya, search just "izakaya", NOT "tofu izakaya". Each request is a fresh search. Set "area" = the Tokyo neighborhood to search (default their hotel area ${hotelArea || 'unknown'} unless they name another). If it's just chatting, recommend=false.
-3) SETUP: if stay or dates are unknown, work ONE friendly question into your reply and capture facts in "updates" (parse relative dates against today).
-4) LEARN — sparingly: only when they reveal a genuinely NEW, reusable preference, add 1-2 SHORT generic tags (1-3 words, lowercase) to learned — e.g. "izakaya", "late night", "date night", "craft beer". NO locations, hotel names, durations, or full sentences. Usually leave learned empty; do not restate things you already know.
+3) FLIGHT CONTEXT: if they ask about arrival, first move, after landing, airport, luggage, jet lag, route to hotel, or a meal around arrival time, use Flight context. Prefer easy post-flight plans around the arrival airport or hotel area. Put airport/hotel-appropriate terms in search (for example "easy lunch Haneda", "coffee Haneda", "casual dinner Shinjuku") and set area to the arrival airport/neighborhood or hotel area. If they ask for routing rather than venues, answer helpfully and set recommend=false unless they also want places.
+4) SETUP: if stay or dates are unknown, work ONE friendly question into your reply and capture facts in "updates" (parse relative dates against today).
+5) LEARN — sparingly: only when they reveal a genuinely NEW, reusable preference, add 1-2 SHORT generic tags (1-3 words, lowercase) to learned — e.g. "izakaya", "late night", "date night", "craft beer". NO locations, hotel names, durations, or full sentences. Usually leave learned empty; do not restate things you already know.
 
 Output ONLY a JSON object, no prose:
 {"reply":"...","recommend":<bool>,"search":"<genre+keywords or ''>","area":"<neighborhood or ''>","updates":{"hotelName":"","hotelArea":"","arrivalDate":"YYYY-MM-DD","nights":0,"prefs":[]},"learned":{"likes":[],"dislikes":[]},"chips":["<=3 short suggested replies"]}`;

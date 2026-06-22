@@ -34,4 +34,6 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 
 - Document emails: if the email body includes “save this for the trip on July 10” or “save this for the trip in Paris,” intake saves a cleaned readable document to the matching trip by date/city while still parsing any flight/hotel facts. First pass stores extracted email body/HTML text; PDF/image attachment OCR is still future work.
 
+- Imported flights are active trip context, not just stored data. Today shows matching arrival flights as timeline stops and an arrival-context action card; Search shows a landing strip, can be opened from Today with an arrival prompt, and sends flights/arrivalFlight into `/api/concierge` so Claude can plan around landing time, airport, luggage, and the hotel area.
+
 - Future roadmap: make destinations outside Tokyo first-class. City support should keep the same concierge/planning pattern, but recommendation providers become destination-aware: Tabelog is Japan-only; non-Japan cities should use Google Places and/or other local sources instead of Tabelog.

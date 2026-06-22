@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 14 · Jun 21';
+const BUILD='build 15 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -390,24 +390,43 @@ function Timeline({stops,onOpen,onAdd,onSkip}) {
   return (
     <div style={{display:'flex',flexDirection:'column',padding:'4px 18px 8px'}}>
       {stops.map((s)=>{
+        const isFlight=s.kind==='flight';
         const isAnc=s.kind==='anchor'||s.kind==='hotel';
         const isHotel=s.kind==='hotel';
-        const nodeBg=isAnc?'#FB7242':s.added?'#6C5CE7':'#F1EEFF';
-        const nodeInk=isAnc?'#fff':s.added?'#fff':'#6C5CE7';
-        const nodeBorder=isAnc?'none':s.added?'none':'2px dashed #A793FF';
+        const nodeBg=isFlight?'#E9F3FF':(isAnc?'#FB7242':s.added?'#6C5CE7':'#F1EEFF');
+        const nodeInk=isFlight?'#2F6CA3':(isAnc?'#fff':s.added?'#fff':'#6C5CE7');
+        const nodeBorder=isFlight?'1.5px solid #BBD9F5':(isAnc?'none':s.added?'none':'2px dashed #A793FF');
         return (
           <div key={s.id} style={{display:'flex',gap:14,alignItems:'stretch'}}>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:34,flexShrink:0}}>
               <div style={{width:34,height:34,borderRadius:'50%',background:nodeBg,border:nodeBorder,color:nodeInk,
                 display:'flex',alignItems:'center',justifyContent:'center',
                 fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15,
-                boxShadow:isAnc?'0 4px 10px rgba(251,114,66,0.35)':s.added?'0 4px 10px rgba(108,92,231,0.30)':'none',
-                zIndex:2}}>{s.num}</div>
+                boxShadow:isFlight?'0 4px 10px rgba(47,108,163,0.16)':isAnc?'0 4px 10px rgba(251,114,66,0.35)':s.added?'0 4px 10px rgba(108,92,231,0.30)':'none',
+                zIndex:2}}>{isFlight?'✈':s.num}</div>
               {s.hasLine&&<div style={{flex:1,width:2,background:'repeating-linear-gradient(#D5D6E4 0 5px,transparent 5px 10px)',margin:'4px 0'}}/>}
             </div>
             <div style={{flex:1,paddingBottom:s.travel?'4px':'22px'}}>
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:12,fontWeight:500,color:'#6C6E8E',letterSpacing:'0.02em',margin:'6px 0'}}>{s.time}</div>
-              {isAnc?(
+              {isFlight?(
+                <div style={{background:'#fff',borderRadius:20,border:'1px solid #D9EAF8',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(47,108,163,0.08)',overflow:'hidden'}}>
+                  <div style={{display:'flex',gap:12,padding:'13px 14px'}}>
+                    <div style={{width:52,height:52,borderRadius:14,flexShrink:0,background:'linear-gradient(135deg,#BFE2FF,#6E9FEA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:25}}>✈</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#E9F3FF',color:'#2F6CA3',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:11,letterSpacing:'0.04em',textTransform:'uppercase',padding:'3px 8px',borderRadius:999}}>Arrival</span>
+                        {s.flightNumber&&<span style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#6C6E8E'}}>{s.flightNumber}</span>}
+                      </div>
+                      <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',marginTop:5,lineHeight:1.15}}>{s.name}</div>
+                      <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',marginTop:4}}>{s.area}</div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:9,padding:'11px 14px',background:'#F4FAFF',borderTop:'1px solid #DCEEFE'}}>
+                    <SparkleIco size={16} color="#2F6CA3"/>
+                    <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#315D7D',lineHeight:1.4}}>{s.note}</div>
+                  </div>
+                </div>
+              ):isAnc?(
                 <div onClick={()=>!isHotel&&onOpen&&onOpen(s.id)} style={{background:'#fff',borderRadius:20,
                   boxShadow:'0 1px 2px rgba(22,23,42,0.06),0 6px 16px rgba(22,23,42,0.07)',overflow:'hidden',cursor:isHotel?'default':'pointer'}}>
                   <div style={{display:'flex',gap:12,padding:'13px 14px'}}>
@@ -579,7 +598,6 @@ function ChatOnboarding({onComplete,onSkip}){
           {draft.prefs&&draft.prefs.length>0&&<DraftPill>{draft.prefs.slice(0,5).map(id=>((PREF_OPTS.find(p=>p.id===id)||{}).emoji)||'•').join(' ')} {draft.prefs.length} vibes</DraftPill>}
         </div>
       </div>
-
       <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'18px 16px',display:'flex',flexDirection:'column',gap:12}}>
         {messages.map((m,i)=>(
           <div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'}}>
@@ -894,6 +912,33 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
   const todayAnchor=trip.anchors?.[0]||null;
   const areaLabel=(todayAnchor&&AREA_LABELS[todayAnchor.area])||todayAnchor?.area||'Tokyo';
   const active=!isPreTrip&&!isPostTrip;
+  const flights=Array.isArray(trip.flights)?trip.flights:[];
+  const flightDate=v=>{ if(!v) return ''; const str=String(v); const m=str.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'); const d=new Date(str); return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10); };
+  const flightTime=v=>{
+    if(!v) return '';
+    const str=String(v).trim();
+    const local=str.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
+    if(local){
+      let h=Number(local[1]);
+      const suffix=local[3]?local[3].toUpperCase():(h>=12?'PM':'AM');
+      if(!local[3]&&h>12) h-=12;
+      if(!local[3]&&h===0) h=12;
+      return h+':'+local[2]+' '+suffix;
+    }
+    const d=new Date(str);
+    return Number.isNaN(d.getTime())?str:d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  };
+  const flightAirport=f=>String([f.arriveAirport,f.arriveCity,f.departAirport,f.departCity].filter(Boolean).join(' '));
+  const destKey=String(trip.destination||'').replace(/[^a-z]/gi,'').toLowerCase();
+  const destinationFlight=f=>{
+    const airport=flightAirport(f);
+    const airportKey=airport.replace(/[^a-z]/gi,'').toLowerCase();
+    return /tokyo|haneda|narita|hnd|nrt/i.test(airport)||Boolean(destKey&&airportKey.includes(destKey));
+  };
+  const dayDate=trip.arrivalDate?addDays(trip.arrivalDate,viewDay):'';
+  const arrivalFlights=flights.filter(f=>destinationFlight(f)&&flightDate(f.arriveAt)===(dayDate||trip.arrivalDate)).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')));
+  const primaryArrival=arrivalFlights[0]||flights.filter(destinationFlight).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')))[0]||null;
+  const arrivalArea=f=>String(f?.arriveAirport||f?.arriveCity||'Tokyo').replace(/\b(HND|NRT)\b/ig,m=>m.toUpperCase()).replace(/haneda/i,'Haneda').replace(/narita/i,'Narita');
 
   // A planned itinerary for this day takes over from the AI suggestions.
   const planned=active?dayStopsRefs(trip,viewDay).map(r=>resolveStop(trip,r)).filter(Boolean):[];
@@ -927,11 +972,15 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
     ? ai.map(r=>({...bp(r.id),reason:r.reason,aiPick:true}))
     : pool.slice(0,2);
 
-  const hotelStop=todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',num:1,time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.',hasLine:(usePlan?planned.length:suggs.length)>0}]:[];
-  const base=todayAnchor?1:0;
+  const flightStops=arrivalFlights.map((f,i)=>({id:'flight-'+(f.id||i),kind:'flight',name:[f.airline,f.flightNumber].filter(Boolean).join(' ')||'Arrival flight',flightNumber:f.flightNumber||'',area:[f.departAirport,f.arriveAirport].filter(Boolean).join(' → ')||arrivalArea(f),time:flightTime(f.arriveAt)||'Arrival',note:'You land at '+(arrivalArea(f)||'the airport')+'. Anchor can plan the first move around luggage, transit, and energy after the flight.'}));
+  const hotelStop=todayAnchor?[{id:'hotel-0',name:todayAnchor.name,area:todayAnchor.area,kind:'hotel',time:'Check-in',catGrad:CATS.stay.grad,rating:null,tabelogRating:null,openNow:'open',budget:null,note:'Your anchor for this leg of the trip.'}]:[];
+  const fixedStops=[...flightStops,...hotelStop];
+  const base=fixedStops.length;
+  const trailingCount=usePlan?planned.length:suggs.length;
+  const fixedNumbered=fixedStops.map((p,i)=>({...p,num:i+1,hasLine:i<fixedStops.length-1||trailingCount>0}));
   const dayStops=usePlan
-    ? [...hotelStop, ...planned.map((p,i)=>({...p,kind:'anchor',num:base+1+i,time:p.time||'—',hasLine:i<planned.length-1,note:p.note||p.hours||'Planned stop'}))]
-    : [...hotelStop, ...suggs.map((p,i)=>({...p,kind:'suggest',num:base+1+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading}))];
+    ? [...fixedNumbered, ...planned.map((p,i)=>({...p,kind:'anchor',num:base+1+i,time:p.time||'—',hasLine:i<planned.length-1,note:p.note||p.hours||'Planned stop'}))]
+    : [...fixedNumbered, ...suggs.map((p,i)=>({...p,kind:'suggest',num:base+1+i,time:['11:00','18:00'][i]||'14:00',hasLine:i<suggs.length-1,added:!!added[p.id],aiLoading}))];
   const PINPOS=[[32,60],[68,30],[50,72],[72,55],[30,38],[55,46]];
   const mapItems=usePlan?planned:suggs;
   const dayPins=[
@@ -997,6 +1046,30 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
       <button onClick={onCreateTrip} aria-label="Create trip" style={{width:40,height:40,borderRadius:12,border:'1px solid #E3E5F0',background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 2px rgba(22,23,42,0.05)',cursor:'pointer'}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6C5CE7" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
+    </div>
+  );
+
+  const ArrivalCTA=()=> !primaryArrival?null:(
+    <div style={{padding:'10px 18px 4px'}}>
+      <div style={{background:'#fff',border:'1px solid #D9EAF8',borderRadius:16,padding:'13px 14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(47,108,163,0.08)'}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:11}}>
+          <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,#BFE2FF,#6E9FEA)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>✈</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#2F6CA3',letterSpacing:'0.06em',textTransform:'uppercase'}}>Arrival context</div>
+            <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',marginTop:2}}>{flightTime(primaryArrival.arriveAt)||'Arrival'} at {arrivalArea(primaryArrival)||'the airport'}</div>
+            <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.35,marginTop:4}}>Search can now plan around your landing time, airport, luggage, and first meal.</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:11,overflowX:'auto'}}>
+          {[
+            'Find something after I land at '+(arrivalArea(primaryArrival)||'the airport'),
+            'Easy food after a '+(flightTime(primaryArrival.arriveAt)||'flight')+' arrival',
+            'Best route from '+(arrivalArea(primaryArrival)||'airport')+' to my hotel'
+          ].map(q=>(
+            <button key={q} onClick={()=>goTab&&goTab('search',q)} style={{flexShrink:0,border:'1px solid #CFE4F6',background:'#F4FAFF',color:'#2F6CA3',borderRadius:999,padding:'8px 12px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{q}</button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 
@@ -1083,6 +1156,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
               ))}
             </div>
           )}
+          <ArrivalCTA/>
           <div style={{padding:'4px 0 8px'}}><ItineraryStrip/></div>
           <div style={{padding:'8px 18px 36px'}}>
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginBottom:12}}>While you wait, explore what's waiting:</div>
@@ -1152,6 +1226,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
             <AnchorMap pins={dayPins} connect height="250px"/>
           </div>
           <div style={{flex:1,overflowY:'auto',paddingTop:8,paddingBottom:24}}>
+            <ArrivalCTA/>
             <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
               onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
             <TasteStrip/>
@@ -1171,6 +1246,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
                 <span style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:17,color:'#16172A'}}>Your day</span>
                 <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD'}}>{dayStops.length} stops</span>
               </div>
+              <ArrivalCTA/>
               <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
                 onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
               <TasteStrip/>
@@ -1183,6 +1259,7 @@ function TodayScreen({layout,setLayout,push,added,setAdded,trip,tripList=[],acti
           <div style={{borderRadius:18,overflow:'hidden',height:120,position:'relative',boxShadow:'0 1px 2px rgba(22,23,42,0.06)',marginBottom:4}}>
             <AnchorMap pins={dayPins} connect height="120px"/>
           </div>
+          <ArrivalCTA/>
           <div style={{margin:'0 -18px'}}>
             <Timeline stops={dayStops} onOpen={id=>{if(PLACES[id])push({type:'place',id});}}
               onAdd={id=>setAdded(a=>({...a,[id]:true}))} onSkip={id=>setAdded(a=>({...a,[id]:false}))}/>
@@ -1905,7 +1982,7 @@ function GoogleResultCard({p}){
 }
 
 /* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
-function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,convo,setConvo}) {
+function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,convo,setConvo,pendingSearch,onPendingSearchUsed}) {
   // The Search tab IS the app's home + setup: a conversation with a knowledgeable
   // Tokyo local (Claude) that recommends real places, learns your taste, AND
   // gathers your trip setup (hotel/dates/interests) — no separate onboarding form.
@@ -1913,10 +1990,34 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   const hotelArea=(anchor0&&anchor0.area)||trip.hotelArea||'';
   const hotelName=(anchor0&&anchor0.name)||'';
   const needsSetup=tripNeedsSetup(trip);
+  const flights=Array.isArray(trip.flights)?trip.flights:[];
+  const flightDate=v=>{ if(!v) return ''; const str=String(v); const m=str.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'); const d=new Date(str); return Number.isNaN(d.getTime())?'':d.toISOString().slice(0,10); };
+  const flightTime=v=>{
+    if(!v) return '';
+    const str=String(v).trim();
+    const local=str.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
+    if(local){
+      let h=Number(local[1]);
+      const suffix=local[3]?local[3].toUpperCase():(h>=12?'PM':'AM');
+      if(!local[3]&&h>12) h-=12;
+      if(!local[3]&&h===0) h=12;
+      return h+':'+local[2]+' '+suffix;
+    }
+    const d=new Date(str);
+    return Number.isNaN(d.getTime())?str:d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  };
+  const flightPlace=f=>String(f?.arriveAirport||f?.arriveCity||'').replace(/haneda/i,'Haneda').replace(/narita/i,'Narita')||'the airport';
+  const searchDestKey=String(trip.destination||'').replace(/[^a-z]/gi,'').toLowerCase();
+  const destinationFlight=f=>{
+    const place=[f.arriveAirport,f.arriveCity].filter(Boolean).join(' ');
+    const placeKey=place.replace(/[^a-z]/gi,'').toLowerCase();
+    return /tokyo|haneda|narita|hnd|nrt/i.test(place)||Boolean(searchDestKey&&placeKey.includes(searchDestKey));
+  };
+  const arrivalFlight=flights.filter(destinationFlight).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')))[0]||null;
   const greet=needsSetup
     ? "Hey — I'm your Tokyo local, and I'll help you plan this whole trip right here. To start: where are you staying (a hotel or a neighborhood), and roughly when's the trip?"
     : (hotelArea
-      ? `Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`
+      ? (arrivalFlight?`Hey — I'm your Tokyo local. I see you land at ${flightPlace(arrivalFlight)} around ${flightTime(arrivalFlight.arriveAt)||'arrival time'} and you're staying around ${hotelArea}. Want an easy first move after landing, or something near the hotel?`:`Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`)
       : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love.");
   // Conversation is owned by App (survives tab switch + reload); seed the
   // greeting once if there's nothing stored yet.
@@ -1966,6 +2067,8 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
     anchored:[...(trip.scratchpad||[]).filter(s=>s.status==='anchored').map(s=>s.name),
       ...((trip.anchoredPlaces||[]).map(curatedName))].filter(Boolean).slice(0,25),
     ideas:(trip.scratchpad||[]).filter(s=>s.status!=='anchored').map(s=>s.name).filter(Boolean).slice(0,25),
+    flights:flights.map(f=>({airline:f.airline,flightNumber:f.flightNumber,departAirport:f.departAirport,departAt:f.departAt,arriveAirport:f.arriveAirport,arriveCity:f.arriveCity,arriveAt:f.arriveAt,terminal:f.terminal})).slice(0,8),
+    arrivalFlight:arrivalFlight?{airline:arrivalFlight.airline,flightNumber:arrivalFlight.flightNumber,arriveAirport:arrivalFlight.arriveAirport,arriveCity:arrivalFlight.arriveCity,arriveAt:arrivalFlight.arriveAt,terminal:arrivalFlight.terminal}:null,
   });
   const send=async(preset)=>{
     const text=(preset||input).trim(); if(!text||busy) return;
@@ -2013,6 +2116,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
       ):x));
     }
   };
+  useEffect(()=>{ if(pendingSearch){ const q=pendingSearch; onPendingSearchUsed&&onPendingSearchUsed(); setTimeout(()=>send(q),0); } },[pendingSearch]); // eslint-disable-line
   // Act on a card: record the memory + disable it in place (no new search), with
   // a personal note. Stored on the message so it survives tab switches/reload.
   const actTone=t=>(t==='save'||t==='anchor'||t==='like')?{bg:'#EAF7F1',fg:'#0E865B'}:{bg:'#F1F1F6',fg:'#6C6E8E'};
@@ -2054,6 +2158,16 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
           New search
         </button>
       </div>
+      {arrivalFlight&&(
+        <div style={{flexShrink:0,padding:'9px 16px',background:'#F4FAFF',borderBottom:'1px solid #DCEEFE',display:'flex',gap:8,overflowX:'auto',alignItems:'center'}}>
+          <span style={{flexShrink:0,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,fontWeight:800,color:'#2F6CA3',letterSpacing:'0.05em',textTransform:'uppercase'}}>Landing {flightTime(arrivalFlight.arriveAt)||''} · {flightPlace(arrivalFlight)}</span>
+          {[
+            'Find something after I land at '+flightPlace(arrivalFlight),
+            'Easy first meal after landing',
+            'Plan airport to hotel then dinner'
+          ].map(q=><button key={q} onClick={()=>send(q)} style={{flexShrink:0,border:'1px solid #CFE4F6',background:'#fff',color:'#2F6CA3',borderRadius:999,padding:'7px 11px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{q}</button>)}
+        </div>
+      )}
 
       <div ref={scrollRef} style={{flex:1,overflowY:'auto',padding:'16px 14px 8px',display:'flex',flexDirection:'column',gap:13}}>
         {msgs.map((m,i)=>(
@@ -2804,6 +2918,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const [stack,setStack]=useState([]);
   const [kbOpen,setKbOpen]=useState(false);
   const [refreshingTrip,setRefreshingTrip]=useState(false);
+  const [pendingSearch,setPendingSearch]=useState('');
   useEffect(()=>{
     const vv=window.visualViewport; if(!vv) return;
     let base=vv.height;
@@ -2821,7 +2936,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const pop=()=>{ if(typeof window!=='undefined'&&window.history) window.history.back(); else setStack(p=>p.slice(0,-1)); };
   const top=stack[stack.length-1];
   const tabHist=React.useRef([]);
-  const changeTab=t=>{ const changing=(t!==tab)||stack.length>0; if(t!==tab)tabHist.current.push(tab); setTab(t); setStack([]); if(changing) histPush(); };
+  const changeTab=(t,preset='')=>{ const changing=(t!==tab)||stack.length>0; if(t==='search'&&preset) setPendingSearch(preset); if(t!==tab)tabHist.current.push(tab); setTab(t); setStack([]); if(changing) histPush(); };
 
   const stackRef=React.useRef(stack); stackRef.current=stack;
   useEffect(()=>{
@@ -3049,7 +3164,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {tab==='discover' &&<DiscoverScreen push={push} trip={trip} onSave={discSave} onAnchor={discAnchor} onSkip={discSkip} onResetDismiss={resetDismissed} onLike={likeCategory} onOptimize={optimizeSearch} optimizing={optimizing}/>}
         {tab==='near'     &&<NearScreen push={push} filter={filter} setFilter={setFilter} onSaveNear={saveNearby} trip={trip}/>}
         {tab==='anchors'  &&<AnchorsScreen push={push} trip={trip} onUnanchor={unanchor}/>}
-        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup} onSkipRec={skipRec} onSignIn={onSignIn} convo={convo} setConvo={updateConvo}/>}
+        {tab==='search'   &&<SearchScreen push={push} onStash={stashLive} trip={trip} onLearn={learnTaste} onSetup={onSetup} onSkipRec={skipRec} onSignIn={onSignIn} convo={convo} setConvo={updateConvo} pendingSearch={pendingSearch} onPendingSearchUsed={()=>setPendingSearch('')}/>}
 
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
