@@ -2650,7 +2650,15 @@ function DocsOverlay({pop,push,trip,onDelete}){
 function DocumentOverlay({pop,doc}){
   if(!doc) return null;
   const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
-  const paragraphs=String(doc.text||doc.summary||'').split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
+  const cleanDocText=value=>String(value||'')
+    .replace(/(?:^|\n)Content-Type:\s*application\/pdf;?[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:\s*text\/|\nFrom:\s|\nSubject:\s|$)/gi,'\n')
+    .replace(/(?:^|\n)Content-Disposition:\s*attachment;?[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:\s*text\/|\nFrom:\s|\nSubject:\s|$)/gi,'\n')
+    .replace(/(?:^|\n)JVBER[A-Za-z0-9+/=\r\n]{200,}(?=\n\S|$)/g,'\n')
+    .replace(/(?:^|\n)%PDF-[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:|\nFrom:\s|\nSubject:\s|$)/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+  const bodyText=cleanDocText(doc.text||'');
+  const paragraphs=(bodyText||(!doc.attachments?.length?String(doc.summary||''):'')).split(/\n{2,}/).map(x=>x.trim()).filter(Boolean);
   const attachments=Array.isArray(doc.attachments)?doc.attachments:[];
   return(
     <div style={{position:'absolute',inset:0,zIndex:50,background:'#FAFAFD',display:'flex',flexDirection:'column',animation:'slideIn .28s cubic-bezier(0.22,1,0.36,1)'}}>

@@ -38,5 +38,20 @@ assert.equal(parsed.attachments.length, 1);
 assert.equal(parsed.attachments[0].name, 'agenda.pdf');
 assert.equal(parsed.attachments[0].dataUrl.startsWith('data:application/pdf;base64,'), true);
 assert.equal(isUsefulDocumentInfo({ saveDocument: true, attachments: parsed.attachments, cleanText: '' }), true);
+const jammedPdfText = [
+  'documents for trip on 6/22-6/26',
+  'Summit registration opens at 8 AM. Keynote starts at 9 AM in the main hall.',
+  'Content-Type: application/pdf;',
+  ' name="Benetech_2026_Summit_Accessible (1).pdf"',
+  'Content-Disposition: attachment;',
+  ' filename="Benetech_2026_Summit_Accessible (1).pdf"',
+  'Content-Transfer-Encoding: base64',
+  '',
+  'JVBERi0xLjcNCiW1tbW1DQoxIDAgb2JqDQo8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvTGFuZyhlbikgL1N0cnVjdF'.repeat(8),
+].join('\n');
+const cleanPdfDoc = fallbackDocumentInfo({ subject: 'Benetech Summit', text: jammedPdfText });
+assert.equal(cleanPdfDoc.cleanText.includes('Content-Type: application/pdf'), false);
+assert.equal(cleanPdfDoc.cleanText.includes('JVBER'), false);
+assert.equal(cleanPdfDoc.cleanText.includes('Keynote starts at 9 AM'), true);
 
 console.log('intake guardrails ok');

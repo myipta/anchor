@@ -188,7 +188,7 @@ function cityFromPhrase(value) {
 }
 
 function cleanDocumentText(value) {
-  return String(value || '')
+  return stripAttachmentText(String(value || ''))
     .split(/\r?\n/)
     .filter(line => !/save\s+this\s+for\s+(the\s+)?trip/i.test(line))
     .filter(line => !/^\s*(documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\s+for\s+(the\s+)?trip\b/i.test(line))
@@ -197,6 +197,14 @@ function cleanDocumentText(value) {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, MAX_DOC_TEXT);
+}
+
+function stripAttachmentText(value) {
+  return String(value || '')
+    .replace(/(?:^|\n)Content-Type:\s*application\/pdf;?[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:\s*text\/|\nFrom:\s|\nSubject:\s|$)/gi, '\n')
+    .replace(/(?:^|\n)Content-Disposition:\s*attachment;?[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:\s*text\/|\nFrom:\s|\nSubject:\s|$)/gi, '\n')
+    .replace(/(?:^|\n)JVBER[A-Za-z0-9+/=\r\n]{200,}(?=\n\S|$)/g, '\n')
+    .replace(/(?:^|\n)%PDF-[\s\S]*?(?=\n--[A-Za-z0-9'()+_,./:=?-]{2,}|\nContent-Type:|\nFrom:\s|\nSubject:\s|$)/g, '\n');
 }
 
 function firstUsefulLine(value) {
