@@ -21,6 +21,7 @@ export async function onRequest(context) {
   const out = await runSearch(env, {
     query,
     area: (body.area || '').toString().trim(),
+    destination: (body.destination || 'Tokyo').toString().trim(),
     taste: (body.taste && typeof body.taste === 'object') ? body.taste : {},
     prefs: Array.isArray(body.prefs) ? body.prefs.slice(0, 20) : [],
     limit: body.limit,

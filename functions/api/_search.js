@@ -13,10 +13,11 @@ const PRICE = {
 };
 
 // Returns { source, count, places } on success, or { error, message, places:[] }.
-export async function runSearch(env, { query, area = '', taste = {}, prefs = [], limit = 14, fast = false }) {
+export async function runSearch(env, { query, area = '', destination = 'Tokyo', taste = {}, prefs = [], limit = 14, fast = false }) {
   const q = (query || '').toString().trim();
   if (!q) return { error: 'no_query', places: [] };
   const a = (area || '').toString().trim();
+  const dest = (destination || 'Tokyo').toString().trim() || 'Tokyo';
   const lim = Math.min(Math.max(parseInt(limit, 10) || 14, 1), 20);
   const t = (taste && typeof taste === 'object') ? taste : {};
   const p = Array.isArray(prefs) ? prefs.slice(0, 20) : [];
@@ -25,11 +26,11 @@ export async function runSearch(env, { query, area = '', taste = {}, prefs = [],
   // it for the Google Places text search (sub-second, and includes open-now).
   let places = [], source = null;
   if (!fast && env.APIFY_TOKEN) {
-    const r = await apifyGoogleMaps(env, q, a, lim);
+    const r = await apifyGoogleMaps(env, q, a, dest, lim);
     if (!r.error && r.places.length) { places = r.places; source = 'apify-google-maps'; }
   }
   if (!places.length && env.GOOGLE_PLACES_API_KEY) {
-    const r = await googleText(env, q, a, lim);
+    const r = await googleText(env, q, a, dest, lim);
     places = r.places || []; source = source || 'google-places';
   }
   if (!places.length) {
@@ -46,8 +47,8 @@ export async function runSearch(env, { query, area = '', taste = {}, prefs = [],
 }
 
 // ── Apify Google Maps scraper (sync run, returns dataset items directly) ──
-async function apifyGoogleMaps(env, query, area, limit) {
-  const search = area ? `${query} in ${area}, Tokyo` : `${query}, Tokyo`;
+async function apifyGoogleMaps(env, query, area, destination, limit) {
+  const search = area ? `${query} in ${area}, ${destination}` : `${query}, ${destination}`;
   const input = {
     searchStringsArray: [search],
     maxCrawledPlacesPerSearch: limit,
@@ -64,7 +65,7 @@ async function apifyGoogleMaps(env, query, area, limit) {
   let items; try { items = await r.json(); } catch { return { error: 'apify_parse' }; }
   const places = (Array.isArray(items) ? items : []).slice(0, limit).map(p => ({
     name: p.title || p.name || null,
-    area: area || p.neighborhood || p.city || 'Tokyo',
+    area: area || p.neighborhood || p.city || destination,
     rating: p.totalScore ?? null,
     reviews: p.reviewsCount ?? null,
     openNow: p.permanentlyClosed ? 'closed' : (p.openingHours ? null : null),
@@ -78,8 +79,9 @@ async function apifyGoogleMaps(env, query, area, limit) {
 }
 
 // ── Google Places text search fallback ──
-async function googleText(env, query, area, limit) {
-  const textQuery = area ? `${query} in ${area}, Tokyo` : `${query}, Tokyo`;
+async function googleText(env, query, area, destination, limit) {
+  const textQuery = area ? `${query} in ${area}, ${destination}` : `${query}, ${destination}`;
+  const regionCode = regionForDestination(destination);
   const fieldMask = ['places.displayName','places.formattedAddress','places.rating','places.userRatingCount',
     'places.location','places.currentOpeningHours.openNow','places.priceLevel','places.primaryTypeDisplayName',
     'places.googleMapsUri'].join(',');
@@ -88,7 +90,7 @@ async function googleText(env, query, area, limit) {
     r = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': fieldMask },
-      body: JSON.stringify({ textQuery, maxResultCount: limit, languageCode: 'en', regionCode: 'JP' }),
+      body: JSON.stringify({ textQuery, maxResultCount: limit, languageCode: 'en', ...(regionCode ? { regionCode } : {}) }),
     });
   } catch { return { places: [] }; }
   if (!r.ok) return { places: [] };
@@ -96,7 +98,7 @@ async function googleText(env, query, area, limit) {
   const places = (d.places || []).slice(0, limit).map(p => {
     const openNow = p.currentOpeningHours?.openNow;
     return {
-      name: p.displayName?.text || null, area: area || 'Tokyo', rating: p.rating ?? null, reviews: p.userRatingCount ?? null,
+      name: p.displayName?.text || null, area: area || destination, rating: p.rating ?? null, reviews: p.userRatingCount ?? null,
       openNow: openNow === true ? 'open' : openNow === false ? 'closed' : null, budget: PRICE[p.priceLevel] || null,
       category: p.primaryTypeDisplayName?.text || null, coords: p.location ? `${p.location.latitude}, ${p.location.longitude}` : null,
       googleUrl: p.googleMapsUri || null, address: p.formattedAddress || null,
@@ -108,9 +110,11 @@ async function googleText(env, query, area, limit) {
 // ── Look up ONE named place for live data (coords→distance, rating, price). ──
 // Used by the concierge to enrich Claude's recommendations and to geocode the
 // hotel. Returns enriched fields or null; fails soft.
-export async function lookupPlace(env, name, area, lang = 'en') {
+export async function lookupPlace(env, name, area, lang = 'en', destination = 'Tokyo') {
   if (!env.GOOGLE_PLACES_API_KEY || !name) return null;
-  const textQuery = `${name}${area ? ', ' + area : ''}, Tokyo`;
+  const dest = (destination || 'Tokyo').toString().trim() || 'Tokyo';
+  const textQuery = `${name}${area ? ', ' + area : ''}, ${dest}`;
+  const regionCode = regionForDestination(dest);
   const fieldMask = ['places.displayName','places.formattedAddress','places.rating','places.userRatingCount',
     'places.location','places.currentOpeningHours.openNow','places.priceLevel','places.primaryTypeDisplayName',
     'places.googleMapsUri'].join(',');
@@ -119,7 +123,7 @@ export async function lookupPlace(env, name, area, lang = 'en') {
     r = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': fieldMask },
-      body: JSON.stringify({ textQuery, maxResultCount: 1, languageCode: lang, regionCode: 'JP' }),
+      body: JSON.stringify({ textQuery, maxResultCount: 1, languageCode: lang, ...(regionCode ? { regionCode } : {}) }),
     });
   } catch { return null; }
   if (!r.ok) return null;
@@ -141,11 +145,18 @@ export async function lookupPlace(env, name, area, lang = 'en') {
 }
 
 // ── DeepSeek: rank the raw list to the traveler's taste, drop dislikes, add reasons ──
+function regionForDestination(destination) {
+  const d = String(destination || '').toLowerCase();
+  if (/tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/.test(d)) return 'JP';
+  if (/denver|colorado|new york|usa|united states|san francisco|los angeles|chicago|boston|seattle|miami|austin|nashville/.test(d)) return 'US';
+  return '';
+}
+
 async function rankToTaste(env, query, taste, prefs, places) {
   const likes = (Array.isArray(taste.likes) ? taste.likes : []).join(', ') || '(none)';
   const dislikes = (Array.isArray(taste.dislikes) ? taste.dislikes : []).join(', ') || '(none)';
   const list = places.map((p, i) => `${i}. ${p.name} — ${p.category || 'place'} — rating ${p.rating ?? '?'} (${p.reviews ?? 0} reviews)`).join('\n');
-  const system = `You rank Tokyo places for a traveler's search. Put the best fits first, and DROP anything matching their dislikes. Return ONLY JSON:
+  const system = `You rank travel places for a traveler's search. Put the best fits first, and DROP anything matching their dislikes. Return ONLY JSON:
 {"ranked":[{"i":<index from the list>,"reason":"<=14 word why it fits"}]}`;
   const user = `Search: "${query}"
 Likes: ${likes}

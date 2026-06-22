@@ -36,4 +36,4 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 
 - Imported flights are active trip context, not just stored data. Today shows matching arrival flights as timeline stops and an arrival-context action card; Search shows a landing strip, can be opened from Today with an arrival prompt, and sends flights/arrivalFlight into `/api/concierge` so Claude can plan around landing time, airport, luggage, and the hotel area.
 
-- Future roadmap: make destinations outside Tokyo first-class. City support should keep the same concierge/planning pattern, but recommendation providers become destination-aware: Tabelog is Japan-only; non-Japan cities should use Google Places and/or other local sources instead of Tabelog.
+- Multi-city foundation: Search/concierge now reads the active trip destination, keeps chat history scoped per trip, and sends destination-aware Google Places queries. Japan trips can still use Tabelog-flavored behavior; non-Japan trips such as Denver should not be refused or shown Tabelog links. Remaining work: generalize Discover/Today built-in content beyond Tokyo.

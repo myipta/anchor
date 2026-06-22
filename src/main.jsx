@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 16 · Jun 21';
+const BUILD='build 17 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -1286,24 +1286,26 @@ function openTabelog(tabelogUrl,webFallback){
   try{ window.location.href='tabelog://rstdtl/'+id; }catch{}
   setTimeout(()=>{ document.removeEventListener('visibilitychange',onHide); if(!left&&web) window.open(web,'_blank','noopener'); },800);
 }
-function sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName){
-  const q=encodeURIComponent(`${name} ${area||''} Tokyo`.trim());
+function sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName,destination='Tokyo'){
+  const dest=destination||'Tokyo';
+  const q=encodeURIComponent(`${name} ${area||''} ${dest}`.trim());
   // Search Tabelog with the LOCAL (Japanese) name when we have it — far more
   // reliable than the English name. Real restaurant page if we ever have it.
   const tbTerm=tabelogName||name;
   return {
     google:googleUrl||`https://www.google.com/maps/search/?api=1&query=${q}`,
-    yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' Tokyo').trim())}`,
+    yelp:`https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(((area||'')+' '+dest).trim())}`,
     tabelog:tabelogUrl||`https://tabelog.com/tokyo/rstLst/?sw=${encodeURIComponent(tbTerm+(area?' '+area:''))}`,
   };
 }
-function SourceLinks({name,area,googleUrl,tabelogUrl,tabelogName,label=true}){
-  const u=sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName);
+function SourceLinks({name,area,googleUrl,tabelogUrl,tabelogName,destination='Tokyo',label=true}){
+  const isJapan=/tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/i.test(destination||'');
+  const u=sourceUrls(name,area,googleUrl,tabelogUrl,tabelogName,destination);
   const tbId=tabelogStoreId(tabelogUrl);
   const items=[
     {k:'Google',href:u.google,color:'#4285F4'},
     {k:'Yelp',href:u.yelp,color:'#D32323'},
-    {k:'Tabelog',href:u.tabelog,color:'#C9A24B',jp:'食',onClick:tbId?(e=>{e.stopPropagation();e.preventDefault();openTabelog(tabelogUrl,u.tabelog);}):null},
+    ...((isJapan||tabelogUrl)?[{k:'Tabelog',href:u.tabelog,color:'#C9A24B',jp:'食',onClick:tbId?(e=>{e.stopPropagation();e.preventDefault();openTabelog(tabelogUrl,u.tabelog);}):null}]:[]),
   ];
   const linkStyle={display:'inline-flex',alignItems:'center',gap:6,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:999,padding:'7px 12px',textDecoration:'none',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,fontWeight:600,color:'#4E5072',cursor:'pointer'};
   const inner=it=>(<><span style={{width:8,height:8,borderRadius:'50%',background:it.color,flexShrink:0}}/>{it.jp?it.jp+' ':''}{it.k}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#B6B8CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg></>);
@@ -1981,12 +1983,15 @@ function GoogleResultCard({p}){
   );
 }
 
-/* ── SEARCH = TOKYO LOCAL CONCIERGE ── */
+/* ── SEARCH = DESTINATION CONCIERGE ── */
 function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,convo,setConvo,pendingSearch,onPendingSearchUsed}) {
   // The Search tab IS the app's home + setup: a conversation with a knowledgeable
-  // Tokyo local (Claude) that recommends real places, learns your taste, AND
+  // destination concierge (Claude) that recommends real places, learns your taste, AND
   // gathers your trip setup (hotel/dates/interests) — no separate onboarding form.
   const anchor0=(trip.anchors&&trip.anchors[0])||null;
+  const destination=trip.destination||'Tokyo';
+  const isTokyo=/tokyo|japan/i.test(destination);
+  const localLabel=isTokyo?'Tokyo local':destination+' guide';
   const hotelArea=(anchor0&&anchor0.area)||trip.hotelArea||'';
   const hotelName=(anchor0&&anchor0.name)||'';
   const needsSetup=tripNeedsSetup(trip);
@@ -2015,10 +2020,10 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   };
   const arrivalFlight=flights.filter(destinationFlight).sort((a,b)=>String(a.arriveAt||'').localeCompare(String(b.arriveAt||'')))[0]||null;
   const greet=needsSetup
-    ? "Hey — I'm your Tokyo local, and I'll help you plan this whole trip right here. To start: where are you staying (a hotel or a neighborhood), and roughly when's the trip?"
+    ? `Hey — I'm your ${localLabel}, and I'll help you plan ${destination} right here. To start: where are you staying (a hotel or a neighborhood), and roughly when's the trip?`
     : (hotelArea
-      ? (arrivalFlight?`Hey — I'm your Tokyo local. I see you land at ${flightPlace(arrivalFlight)} around ${flightTime(arrivalFlight.arriveAt)||'arrival time'} and you're staying around ${hotelArea}. Want an easy first move after landing, or something near the hotel?`:`Hey — I'm your Tokyo local. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`)
-      : "Hey — I'm your Tokyo local. Tell me what you're into and I'll point you to places you'd actually love.");
+      ? (arrivalFlight?`Hey — I'm your ${localLabel}. I see you land at ${flightPlace(arrivalFlight)} around ${flightTime(arrivalFlight.arriveAt)||'arrival time'} and you're staying around ${hotelArea}. Want an easy first move after landing, or something near the hotel?`:`Hey — I'm your ${localLabel}. You're around ${hotelArea}, nice. What are you in the mood for — coffee, a first dinner, something to do tomorrow?`)
+      : `Hey — I'm your ${localLabel}. Tell me what you're into and I'll point you to places you'd actually love.`);
   // Conversation is owned by App (survives tab switch + reload); seed the
   // greeting once if there's nothing stored yet.
   const msgs=(convo&&convo.length)?convo:[{role:'anchor',text:greet}];
@@ -2062,7 +2067,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
   const context=()=>({
     taste:trip.taste||{likes:[],dislikes:[]},
     prefs:trip.prefs||[],
-    hotelArea, hotelName, hotelCoords:(anchor0&&anchor0.coords)||'', arrivalDate:trip.arrivalDate, nights:trip.nights,
+    destination, hotelArea, hotelName, hotelCoords:(anchor0&&anchor0.coords)||'', arrivalDate:trip.arrivalDate, nights:trip.nights,
     // Places the user committed to (swiped to Anchor) are the strongest taste signal.
     anchored:[...(trip.scratchpad||[]).filter(s=>s.status==='anchored').map(s=>s.name),
       ...((trip.anchoredPlaces||[]).map(curatedName))].filter(Boolean).slice(0,25),
@@ -2084,7 +2089,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
     const res=await API.concierge(hist,ctx,model);
     setBusy(false);
     if(res.error==='unauthorized'){
-      setMsgs(m=>[...(m||[]),{role:'anchor',text:'Sign in to chat with your Tokyo local — it keeps your trips and saved picks in your account, on any device.',needAuth:true}]);
+      setMsgs(m=>[...(m||[]),{role:'anchor',text:'Sign in to chat with Anchor — it keeps your trips and saved picks in your account, on any device.',needAuth:true}]);
       return;
     }
     if(onSetup&&res.updates&&Object.keys(res.updates).length) onSetup(res.updates);
@@ -2105,13 +2110,13 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
       const hotelExclusions=[hotelName,...((trip.anchors||[]).map(a=>a&&a.name))].filter(Boolean);
       const saved=[...(ctx.anchored||[]),...(ctx.ideas||[]),...(trip.skippedRecs||[]),...shown,...hotelExclusions];
       const effectiveTaste=noHotels?{...(trip.taste||{likes:[],dislikes:[]}),dislikes:mergeTags((trip.taste&&trip.taste.dislikes)||[],['hotels','lodging'])}:(trip.taste||{likes:[],dislikes:[]});
-      const tr=await API.tabelog(q,res.area||hotelArea,effectiveTaste,trip.prefs||[],saved,hotelExclusions);
+      const tr=await API.tabelog(q,res.area||hotelArea||destination,effectiveTaste,trip.prefs||[],saved,hotelExclusions,destination);
       const got=(tr.places||[]).filter(p=>!looksLikeLodgingPlace(p));
       setMsgs(m=>(m||[]).map(x=>x.id===mid?(got.length
         ? {...x,places:got,loadingCards:false,source:tr.source}
         // No results (often: exhausted the pool after filtering) — be honest, not a phantom batch.
         : {...x,places:[],loadingCards:false,source:tr.source,
-            text:`I’ve shown you the ${q} spots I can find near ${hotelArea||'there'} for now. Want me to widen the area, or try a related style?`,
+            text:`I’ve shown you the ${q} spots I can find near ${hotelArea||destination||'there'} for now. Want me to widen the area, or try a related style?`,
             chips:['Search a wider area','Try a related style','Pick a different cuisine']}
       ):x));
     }
@@ -2138,11 +2143,11 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
       <div style={{flexShrink:0,padding:'16px 18px 12px',background:'#FAFAFD',borderBottom:'1px solid #ECEDF6',display:'flex',alignItems:'center',gap:12}}>
         <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#FB7242,#F857A6)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{fontSize:20}}>⚓</span></div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>Your Tokyo local</div>
+          <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:18,color:'#16172A',lineHeight:1.1}}>{localLabel}</div>
           <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#9092AD',marginTop:1}}>{needsSetup?'Plan + recommendations, all in chat':'Chat for recommendations — the more you talk, the better'} · {BUILD}</div>
         </div>
         <button onClick={()=>push({type:'trip'})} aria-label="Trip controls" style={{flexShrink:0,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1,border:'1.5px solid '+(needsSetup?'#FBD9C9':'#E3E5F0'),background:needsSetup?'#FFF4EE':'#fff',borderRadius:12,padding:'7px 11px',cursor:'pointer'}}>
-          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:12.5,color:needsSetup?'#E05B2B':'#16172A',lineHeight:1.1}}>{needsSetup?'Set up trip':(hotelArea||'Tokyo')}</span>
+          <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:12.5,color:needsSetup?'#E05B2B':'#16172A',lineHeight:1.1}}>{needsSetup?'Set up trip':(hotelArea||destination)}</span>
           <span style={{fontFamily:"'Geist Mono',monospace",fontSize:10.5,color:'#9092AD'}}>{needsSetup?'or just chat':(trip.nights?`${trip.nights} nights`:'dates TBD')}</span>
         </button>
       </div>
@@ -2185,7 +2190,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
             {m.loadingCards&&(
               <div style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:9,background:'#fff',borderRadius:14,padding:'10px 13px',boxShadow:'0 1px 2px rgba(22,23,42,0.06)'}}>
                 <span style={{width:22,height:22,borderRadius:7,background:'#C9A24B',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700}}>食</span>
-                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD'}}>Finding top-rated spots on Tabelog…</span>
+                <span style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#9092AD'}}>{isTokyo?'Finding top-rated spots…':'Finding live local spots…'}</span>
               </div>
             )}
 
@@ -2216,7 +2221,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
                           <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.15}}>{p.name}</div>
                           <BudgetBadge budget={p.budget}/>
                         </div>
-                        {(p.area||p.category)&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area||'Tokyo'}{p.category?` · ${p.category}`:''}</div>}
+                        {(p.area||p.category)&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12,color:'#9092AD',marginTop:2}}>{p.area||destination}{p.category?` · ${p.category}`:''}</div>}
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,flexWrap:'wrap'}}>
                           {(p.rating!=null||p.tabelogRating!=null)&&<Ratings rating={p.rating} tabelogRating={p.tabelogRating}/>}
                           <StatusPill openNow={p.openNow} small/>
@@ -2226,7 +2231,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
                     {distAnchor&&<div style={{marginTop:9}}><AnchorDistPill place={p} anchor={distAnchor}/></div>}
                     {p.why&&<div style={{display:'flex',gap:7,marginTop:9,background:'#F4F2FF',borderRadius:10,padding:'8px 11px'}}><SparkleIco size={14} color="#6C5CE7"/><div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#4836B4',lineHeight:1.4}}>{p.why}</div></div>}
                     <div style={{marginTop:9,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                      <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} tabelogUrl={p.tabelogUrl} tabelogName={p.jaName} label={false}/>
+                      <SourceLinks name={p.name} area={p.area} googleUrl={p.googleUrl} tabelogUrl={p.tabelogUrl} tabelogName={p.jaName} destination={destination} label={false}/>
                       <div style={{display:'flex',gap:7,flexShrink:0}}>
                         <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'like');}} aria-label="More like this" title="More like this" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #CFEFDD',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up size={15} color="#0E865B"/></button>
                         <button onClick={e=>{e.stopPropagation();actCard(m.id,j,p,'dislike');}} aria-label="Not for me" title="Not for me" style={{width:34,height:34,borderRadius:10,border:'1.5px solid #F0D9D9',background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><ThumbIco up={false} size={15} color="#D8553C"/></button>
@@ -2260,7 +2265,7 @@ function SearchScreen({push,onStash,trip,onLearn,onSetup,onSkipRec,onSignIn,conv
 
       <div style={{flexShrink:0,display:'flex',gap:9,padding:'10px 14px calc(12px + env(safe-area-inset-bottom))',borderTop:'1px solid #ECEDF6',background:'#FAFAFD'}}>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')send();}}
-          placeholder="Ask your Tokyo local anything…" style={{flex:1,minWidth:0,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:16,color:'#16172A',outline:'none'}}/>
+          placeholder={`Ask your ${localLabel} anything…`} style={{flex:1,minWidth:0,border:'1.5px solid #E3E5F0',background:'#fff',borderRadius:14,padding:'12px 14px',fontFamily:"'Hanken Grotesk',sans-serif",fontSize:16,color:'#16172A',outline:'none'}}/>
         <button onClick={()=>send()} disabled={!input.trim()||busy} style={{flexShrink:0,border:'none',borderRadius:14,background:!input.trim()||busy?'#C9C2F0':'linear-gradient(135deg,#8B72FB,#6C5CE7)',color:'#fff',fontWeight:600,fontSize:15,padding:'0 18px',cursor:!input.trim()||busy?'default':'pointer'}}>Send</button>
       </div>
     </div>
@@ -3010,12 +3015,14 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   },[cloud,user,refreshTripFromCloud]);
   // Concierge conversation lives in App (survives tab switches) + localStorage
   // (survives reload), so it isn't lost when the Search tab unmounts.
-  const [convo,setConvo]=useState(()=>loadChat());
-  const updateConvo=React.useCallback(next=>{ setConvo(prev=>{ const v=typeof next==='function'?next(prev):next; saveChat(v); return v; }); },[]);
+  const [convo,setConvo]=useState(()=>loadChat(activeTripId));
+  useEffect(()=>{ setConvo(loadChat(activeTripId)); },[activeTripId]);
+  const updateConvo=React.useCallback(next=>{ setConvo(prev=>{ const v=typeof next==='function'?next(prev):next; saveChat(v,activeTripId); return v; }); },[activeTripId]);
   // Apply trip setup the concierge gathered through conversation (no setup form).
   const onSetup=updates=>{
     if(!updates||typeof updates!=='object'||!Object.keys(updates).length) return;
     const t={...trip};
+    if(updates.destination) t.destination=updates.destination;
     if(updates.arrivalDate) t.arrivalDate=updates.arrivalDate;
     if(updates.nights) t.nights=updates.nights;
     if(t.arrivalDate&&t.nights) t.departureDate=addDays(t.arrivalDate,t.nights);
@@ -3023,7 +3030,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     if(updates.hotelName||updates.hotelArea||updates.hotelCoords){
       const anchors=[...(t.anchors||[])];
       const name=updates.hotelName||(anchors[0]&&anchors[0].name)||'My stay';
-      const area=updates.hotelArea||(anchors[0]&&anchors[0].area)||'Tokyo';
+      const area=updates.hotelArea||(anchors[0]&&anchors[0].area)||t.destination||'Tokyo';
       const coords=updates.hotelCoords||(anchors[0]&&anchors[0].coords)||null;
       if(anchors[0]) anchors[0]={...anchors[0],name,area,...(coords?{coords}:{})};
       else anchors.unshift({id:'anc-0',name,area,...(coords?{coords}:{}),checkin:t.arrivalDate||todayStr(),checkout:t.departureDate||''});
@@ -3109,7 +3116,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     const found=[];
     for(const term of terms){
       // Grounded: Tabelog (→ Google fallback) near the hotel, ranked to taste.
-      const res=await API.tabelog(term,area,taste,trip.prefs||[],[]);
+      const res=await API.tabelog(term,area,taste,trip.prefs||[],[],[],trip.destination||'Tokyo');
       (res.places||[]).forEach(p=>{
         const id='g:'+(p.tabelogUrl||p.googleUrl||p.name||'');
         const h=((p.name||'')+' '+(p.category||'')).toLowerCase();

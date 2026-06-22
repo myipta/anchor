@@ -301,7 +301,7 @@ export async function mergeTravelIntoTrip(env, trip, extracted, meta) {
     const matchIdx = findHotelAnchorIndex(anchors, hotelName, hotelConf);
     const existing = matchIdx >= 0 ? anchors[matchIdx] : { id: 'anc-' + Date.now(), name: 'My stay', area: 'Tokyo' };
     let enriched = null;
-    if (env.GOOGLE_PLACES_API_KEY && hotel.name) enriched = await lookupPlace(env, hotel.name, hotel.area || existing.area || 'Tokyo');
+    if (env.GOOGLE_PLACES_API_KEY && hotel.name) enriched = await lookupPlace(env, hotel.name, hotel.area || existing.area || t.destination || 'Tokyo', 'en', t.destination || 'Tokyo');
     const checkin = isoDate(hotel.checkinDate) || existing.checkin || t.arrivalDate || '';
     const checkout = isoDate(hotel.checkoutDate) || existing.checkout || t.departureDate || '';
     const mergedAnchor = {

@@ -18,10 +18,10 @@ export const API = {
       return {places:Array.isArray(d.places)?d.places:[]};
     }catch{return {error:'network',message:'Could not reach the server.',places:[]};}
   },
-  async search(query,area,taste,prefs,limit=14){
+  async search(query,area,taste,prefs,limit=14,destination='Tokyo'){
     try{
       const r=await fetch('/api/search',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({query,area,taste,prefs,limit})});
+        body:JSON.stringify({query,area,taste,prefs,limit,destination})});
       const d=await r.json();
       if(!r.ok) return {error:d.error||'error',message:d.message,places:[]};
       return {places:Array.isArray(d.places)?d.places:[],source:d.source};
@@ -45,10 +45,10 @@ export const API = {
       return {reply:d.reply||'',recommend:!!d.recommend,search:d.search||'',area:d.area||'',learned:d.learned||{likes:[],dislikes:[]},updates:d.updates||{},chips:Array.isArray(d.chips)?d.chips:[]};
     }catch{return {error:'network',reply:'Could not reach me just now — try again in a moment.',learned:{likes:[],dislikes:[]},updates:{},chips:[]};}
   },
-  async tabelog(query,area,taste,prefs,saved,excludeNames=[]){
+  async tabelog(query,area,taste,prefs,saved,excludeNames=[],destination='Tokyo'){
     try{
       const r=await fetch('/api/tabelog',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({query,area,taste,prefs,saved,excludeNames})});
+        body:JSON.stringify({query,area,taste,prefs,saved,excludeNames,destination})});
       const d=await r.json();
       if(!r.ok) return {places:[],source:null};
       return {places:Array.isArray(d.places)?d.places:[],source:d.source||null};

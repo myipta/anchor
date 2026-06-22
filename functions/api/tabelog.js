@@ -19,6 +19,8 @@ export async function onRequest(context) {
   const query = (body.query || '').toString().trim();
   if (!query) return json({ error: 'no_query', places: [] }, 400);
   const area = (body.area || '').toString().trim();
+  const destination = (body.destination || 'Tokyo').toString().trim() || 'Tokyo';
+  const useTabelog = /tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/i.test(destination);
   const taste = (body.taste && typeof body.taste === 'object') ? body.taste : {};
   const prefs = Array.isArray(body.prefs) ? body.prefs : [];
   const saved = Array.isArray(body.saved) ? body.saved : [];
@@ -29,16 +31,16 @@ export async function onRequest(context) {
   // Google first: it reliably respects the query (tofu kaiseki != sushi). Tabelog
   // (Apify) is only tried if Google returns nothing — until its input schema is
   // confirmed via the health probe it returns generic/popular results.
-  const g = await runSearch(env, { query, area, taste, prefs, limit: 14, fast: true });
+  const g = await runSearch(env, { query, area, destination, taste, prefs, limit: 14, fast: true });
   if (g.places && g.places.length) {
     places = g.places.map(p => ({ ...p, why: p.reason || '' })); source = 'google';
-  } else {
+  } else if (useTabelog) {
     const t = await tabelogSearch(env, { query, area, limit: 14 });
     if (t.places && t.places.length) {
       places = t.places; source = t.source || 'tabelog';
       if (env.GOOGLE_PLACES_API_KEY) {
         await Promise.all(places.slice(0, 6).filter(p => !p.coords).map(async p => {
-          const info = await lookupPlace(env, p.name, p.area);
+          const info = await lookupPlace(env, p.name, p.area, 'en', destination);
           if (info) { p.coords = p.coords || info.coords; p.openNow = p.openNow ?? info.openNow; p.googleUrl = p.googleUrl || info.googleUrl; }
         }));
       }
@@ -54,9 +56,9 @@ export async function onRequest(context) {
   // only be a search for us (no ID/API access), so fetch each pick's LOCAL
   // Japanese name from Google and use THAT for the Tabelog search — far more
   // reliable than the English name ("Akafuda" → 赤札).
-  if (env.GOOGLE_PLACES_API_KEY && !source?.startsWith('tabelog')) {
+  if (useTabelog && env.GOOGLE_PLACES_API_KEY && !source?.startsWith('tabelog')) {
     await Promise.all(places.map(async p => {
-      const ja = await lookupPlace(env, p.name, p.area, 'ja');
+      const ja = await lookupPlace(env, p.name, p.area, 'ja', destination);
       if (ja && ja.name && ja.name !== p.name) p.jaName = ja.name;
     }));
   }

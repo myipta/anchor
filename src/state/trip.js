@@ -1,5 +1,6 @@
 const TRIP_KEY = 'anchor_v1';
 const CHAT_KEY = 'anchor_chat';
+const chatKey = tripId => CHAT_KEY + (tripId ? ':' + tripId : '');
 const LIBRARY_VERSION = 2;
 
 export function loadTrip(){
@@ -111,17 +112,19 @@ export function tripNeedsSetup(trip){
   return !t||(!((t.anchors||[]).length)&&!t.arrivalDate);
 }
 
-export function loadChat(){
+export function loadChat(tripId){
   try{
-    const chat=JSON.parse(localStorage.getItem(CHAT_KEY)||'null');
+    const raw=tripId?localStorage.getItem(chatKey(tripId)):(localStorage.getItem(CHAT_KEY)||'null');
+    const chat=JSON.parse(raw||'null');
     return Array.isArray(chat)&&chat.length?chat:null;
   }catch{
     return null;
   }
 }
 
-export function saveChat(messages){
+export function saveChat(messages,tripId){
   try{
-    localStorage.setItem(CHAT_KEY,JSON.stringify((messages||[]).slice(-40)));
+    localStorage.setItem(chatKey(tripId),JSON.stringify((messages||[]).slice(-40)));
+    if(tripId) localStorage.removeItem(CHAT_KEY);
   }catch{}
 }
