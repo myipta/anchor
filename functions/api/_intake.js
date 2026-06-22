@@ -134,9 +134,12 @@ async function callClaudeSonnet(env, { system, user, maxTokens = 1200 }) {
   return text ? { text, model } : { error: 'empty_response' };
 }
 
-function hasDocumentSaveRequest({ subject, text }) {
+export function hasDocumentSaveRequest({ subject, text }) {
   const hay = (String(subject || '') + '\n' + String(text || '')).toLowerCase();
-  return /save\s+this\s+for\s+(the\s+)?trip/.test(hay) || /save\s+for\s+(the\s+)?trip/.test(hay);
+  return /save\s+this\s+for\s+(the\s+)?trip/.test(hay) ||
+    /save\s+for\s+(the\s+)?trip/.test(hay) ||
+    /\b(?:documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\b[\s\S]{0,120}\bfor\s+(the\s+)?trip\b/.test(hay) ||
+    /\bfor\s+(the\s+)?trip\b[\s\S]{0,120}\b(?:documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\b/.test(hay);
 }
 
 async function extractDocumentInfo(env, { subject, text, from }) {
@@ -171,7 +174,7 @@ function normalizeDocumentInfo(parsed, fallback) {
   return out;
 }
 
-function fallbackDocumentInfo({ subject, text }) {
+export function fallbackDocumentInfo({ subject, text }) {
   const target = targetFromText(subject + '\n' + text);
   const clean = cleanDocumentText(text);
   const title = str(subject, 120) || firstUsefulLine(clean) || 'Trip document';
@@ -185,9 +188,14 @@ function fallbackDocumentInfo({ subject, text }) {
   };
 }
 
-function targetFromText(value) {
+export function targetFromText(value) {
   const s = String(value || '');
-  const phrase = (s.match(/save\s+this\s+for\s+(?:the\s+)?trip\s+(?:on|for)\s+([^\n.]+)/i) || s.match(/save\s+this\s+for\s+(?:the\s+)?trip\s+(?:in|to)\s+([^\n.]+)/i) || [])[1] || '';
+  const phrase = (
+    s.match(/(?:save\s+(?:this\s+)?(?:document|documents|doc|docs|note|notes|agenda|briefing|event|offsite|conference)?\s*)?for\s+(?:the\s+)?trip\s+(?:on|for|from)?\s+([^\n.]+)/i) ||
+    s.match(/(?:document|documents|doc|docs|note|notes|agenda|briefing|event|offsite|conference)s?\s+for\s+(?:the\s+)?trip\s+(?:on|for|from)?\s+([^\n.]+)/i) ||
+    s.match(/save\s+this\s+for\s+(?:the\s+)?trip\s+(?:in|to)\s+([^\n.]+)/i) ||
+    []
+  )[1] || '';
   return { date: isoDateFlexible(phrase), city: cityFromPhrase(phrase), text: str(phrase, 160) };
 }
 
@@ -202,6 +210,7 @@ function cleanDocumentText(value) {
   return String(value || '')
     .split(/\r?\n/)
     .filter(line => !/save\s+this\s+for\s+(the\s+)?trip/i.test(line))
+    .filter(line => !/^\s*(documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\s+for\s+(the\s+)?trip\b/i.test(line))
     .join('\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -572,7 +581,7 @@ export function isUsefulDocumentInfo(doc, meta = {}) {
   const hay = (String(meta.subject || doc.title || '') + '\n' + clean).toLowerCase();
   if (chars < 80 && words < 12) return false;
   if (/\b(dummy|random|test email|just testing|ignore this|asdf|lorem ipsum)\b/i.test(hay) && words < 35) return false;
-  return clean.split(/\n+/).some(line => line.trim().length >= 18 && !/save\s+this\s+for\s+(the\s+)?trip/i.test(line));
+  return clean.split(/\n+/).some(line => line.trim().length >= 18 && !/save\s+this\s+for\s+(the\s+)?trip/i.test(line) && !/^\s*(documents?|docs?|notes?|agenda|conference|event|offsite|briefing)\s+for\s+(the\s+)?trip\b/i.test(line));
 }
 
 function isCredibleFlight(f) {
@@ -610,6 +619,14 @@ function isoDateFlexible(value) {
   const exact = isoDate(value);
   if (exact) return exact;
   const s = String(value || '').trim();
+  const numeric = s.match(/\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](20\d{2}|\d{2}))?\b/);
+  if (numeric) {
+    let year = numeric[3] || String(new Date().getFullYear());
+    if (year.length === 2) year = '20' + year;
+    const month = Number(numeric[1]);
+    const day = Number(numeric[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
   const m = s.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
   if (!m) return '';
   const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
