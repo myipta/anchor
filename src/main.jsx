@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 19 · Jun 21';
+const BUILD='build 20 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -3267,7 +3267,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
     const dislikes=taste.dislikes||[];
     const found=[];
     for(const term of terms){
-      // Grounded: Tabelog (→ Google fallback) near the hotel, ranked to taste.
+      // Grounded: Japan uses Tabelog-flavored cards; non-Japan goes straight to Google.
       const res=await API.tabelog(term,area,taste,trip.prefs||[],[],[],trip.destination||'Tokyo');
       (res.places||[]).forEach(p=>{
         const id='g:'+(p.tabelogUrl||p.googleUrl||p.name||'');

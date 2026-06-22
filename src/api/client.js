@@ -47,11 +47,13 @@ export const API = {
   },
   async tabelog(query,area,taste,prefs,saved,excludeNames=[],destination='Tokyo'){
     try{
-      const r=await fetch('/api/tabelog',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({query,area,taste,prefs,saved,excludeNames,destination})});
+      const isJapan=/tokyo|japan|kyoto|osaka|sapporo|fukuoka|kanazawa|hiroshima/i.test(String(destination||''));
+      const endpoint=isJapan?'/api/tabelog':'/api/search';
+      const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({query,area,taste,prefs,saved,excludeNames,destination,limit:14})});
       const d=await r.json();
       if(!r.ok) return {places:[],source:null};
-      return {places:Array.isArray(d.places)?d.places:[],source:d.source||null};
+      return {places:(Array.isArray(d.places)?d.places:[]).slice(0,5),source:isJapan?(d.source||null):(d.source||'google')};
     }catch{return {places:[],source:null};}
   },
   async near(lat,lng,{radius=1200,type='all',limit=16,q=''}={}){
