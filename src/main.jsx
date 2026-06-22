@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import './styles/global.css';
 import { API } from './api/client.js';
 import { addDays, daysBetween, fmtDate, fmtDateLong, fmtMonthYear, todayStr } from './lib/dates.js';
@@ -2647,6 +2648,68 @@ function DocsOverlay({pop,push,trip,onDelete}){
   );
 }
 
+function PdfAttachmentViewer({src,name}){
+  const hostRef=useRef(null);
+  const [status,setStatus]=useState('Loading PDF…');
+  useEffect(()=>{
+    let cancelled=false;
+    let loadingTask=null;
+    let pdfDoc=null;
+    const run=async()=>{
+      const host=hostRef.current;
+      if(!host||!src) return;
+      host.innerHTML='';
+      setStatus('Loading PDF…');
+      try{
+        const pdfjs=await import('pdfjs-dist/build/pdf.mjs');
+        pdfjs.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
+        const r=await fetch(src,{credentials:'same-origin'});
+        if(!r.ok) throw new Error('Could not load PDF');
+        const data=new Uint8Array(await r.arrayBuffer());
+        loadingTask=pdfjs.getDocument({data});
+        pdfDoc=await loadingTask.promise;
+        if(cancelled) return;
+        setStatus(pdfDoc.numPages+' page'+(pdfDoc.numPages===1?'':'s'));
+        const dpr=Math.min(2,window.devicePixelRatio||1);
+        for(let n=1;n<=pdfDoc.numPages;n++){
+          if(cancelled) return;
+          const page=await pdfDoc.getPage(n);
+          const base=page.getViewport({scale:1});
+          const cssWidth=Math.max(260,Math.min(760,(host.clientWidth||360)-20));
+          const cssScale=cssWidth/base.width;
+          const viewport=page.getViewport({scale:cssScale*dpr});
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.floor(viewport.width);
+          canvas.height=Math.floor(viewport.height);
+          canvas.style.width=Math.floor(base.width*cssScale)+'px';
+          canvas.style.height=Math.floor(base.height*cssScale)+'px';
+          canvas.style.display='block';
+          canvas.style.margin='0 auto 14px';
+          canvas.style.background='#fff';
+          canvas.style.borderRadius='8px';
+          canvas.style.boxShadow='0 1px 2px rgba(22,23,42,0.08),0 8px 24px rgba(22,23,42,0.10)';
+          const label=document.createElement('div');
+          label.textContent='Page '+n;
+          label.style.cssText='font-family: Geist Mono, monospace; font-size: 11px; color: #9092AD; margin: 2px 10px 6px;';
+          host.appendChild(label);
+          host.appendChild(canvas);
+          await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+        }
+      }catch(e){
+        if(!cancelled) setStatus('Could not render this PDF.');
+      }
+    };
+    run();
+    return ()=>{cancelled=true; try{loadingTask&&loadingTask.destroy&&loadingTask.destroy();}catch{} try{pdfDoc&&pdfDoc.destroy&&pdfDoc.destroy();}catch{}};
+  },[src]);
+  return(
+    <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,background:'#F4F5FA'}}>
+      <div style={{flexShrink:0,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#6C6E8E',padding:'8px 12px',borderBottom:'1px solid #E3E5F0',background:'#FAFAFD'}}>{status}</div>
+      <div ref={hostRef} aria-label={name||'PDF pages'} style={{flex:1,overflowY:'auto',padding:'12px 0 28px',WebkitOverflowScrolling:'touch'}}/>
+    </div>
+  );
+}
+
 function DocumentOverlay({pop,doc}){
   const [viewer,setViewer]=useState(null);
   if(!doc) return null;
@@ -2706,7 +2769,7 @@ function DocumentOverlay({pop,doc}){
               <div style={{fontFamily:"'Geist Mono',monospace",fontSize:11.5,color:'#9092AD',marginTop:1}}>{viewer.byteLength?Math.ceil(viewer.byteLength/1024)+' KB':'PDF'}</div>
             </div>
           </div>
-          <iframe title={viewer.name||'PDF attachment'} src={doc.id?('/api/attachment?doc='+encodeURIComponent(doc.id)+'&i='+encodeURIComponent(viewer.index||0)):viewer.dataUrl} style={{flex:1,width:'100%',border:'none',background:'#fff'}}/>
+          <PdfAttachmentViewer name={viewer.name||'PDF attachment'} src={doc.id?('/api/attachment?doc='+encodeURIComponent(doc.id)+'&i='+encodeURIComponent(viewer.index||0)):viewer.dataUrl}/>
         </div>
       )}
     </div>
