@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 20 · Jun 21';
+const BUILD='build 21 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -855,11 +855,11 @@ function OnboardingFlow({onComplete,initialData}){
   const finish=()=>{
     const hp=hotelPlace;
     const anchors=(hp||hotelName.trim())?[{
-      id:'anc-0',name:hp?hp.name:hotelName.trim(),area:(hp&&hp.area&&hp.area!=='Tokyo'?hp.area:hotelArea)||'Tokyo',
+      id:'anc-0',name:hp?hp.name:hotelName.trim(),area:(hp&&hp.area&&hp.area!=='Tokyo'?hp.area:hotelArea)||(initialData&&initialData.destination)||'Stay',
       checkin:arrive||todayStr(),checkout:depart||addDays(arrive||todayStr(),nights),
       ...(hp?{address:hp.address,coords:hp.coords,googleUrl:hp.googleUrl,rating:hp.rating,reviews:hp.reviews,hours:hp.hours,category:hp.category}:{})
     }]:[];
-    onComplete({...(initialData||{}),destination:'Tokyo',arrivalDate:arrive||todayStr(),departureDate:depart||addDays(arrive||todayStr(),nights),nights,anchors,prefs,anchoredPlaces:initialData?.anchoredPlaces||[]});
+    onComplete({...(initialData||{}),destination:(initialData&&initialData.destination)||'Tokyo',arrivalDate:arrive||todayStr(),departureDate:depart||addDays(arrive||todayStr(),nights),nights,anchors,prefs,anchoredPlaces:initialData?.anchoredPlaces||[]});
   };
 
   if(step===0) return(

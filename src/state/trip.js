@@ -24,13 +24,23 @@ function clone(value){
   return JSON.parse(JSON.stringify(value||null));
 }
 
+function inferredDestinationFromTrip(t){
+  const hay=[
+    ...(Array.isArray(t.anchors)?t.anchors.map(a=>[a.name,a.area,a.address].filter(Boolean).join(' ')):[]),
+    ...(Array.isArray(t.flights)?t.flights.map(f=>[f.arriveAirport,f.arriveCity,f.departAirport,f.departCity].filter(Boolean).join(' ')):[]),
+  ].join(' ').toLowerCase();
+  if(/\bbroomfield\b/.test(hay)) return 'Broomfield, CO';
+  if(/\bdenver\b|\bden\b/.test(hay)) return 'Denver, CO';
+  return '';
+}
+
 // A minimal valid trip so new users land straight in the concierge. The
 // concierge fills in hotel/dates/interests through conversation.
 export function blankTrip(seed={}){
   const now=Date.now();
   return {
     id:seed.id||tripId(),
-    destination:seed.destination||'Tokyo',
+    destination:typeof seed.destination==='string'?seed.destination:'',
     arrivalDate:'',
     nights:0,
     anchors:[],
@@ -44,7 +54,12 @@ export function blankTrip(seed={}){
 export function ensureTrip(trip){
   const t=trip&&typeof trip==='object'?{...trip}:blankTrip();
   if(!t.id) t.id=tripId();
-  if(!t.destination) t.destination='Tokyo';
+  if(typeof t.destination!=='string') t.destination='';
+  t.destination=t.destination.trim();
+  if(/^tokyo$/i.test(t.destination)){
+    const inferred=inferredDestinationFromTrip(t);
+    if(inferred) t.destination=inferred;
+  }
   if(!Array.isArray(t.anchors)) t.anchors=[];
   if(!Array.isArray(t.prefs)) t.prefs=[];
   if(!Array.isArray(t.anchoredPlaces)) t.anchoredPlaces=[];
