@@ -86,7 +86,7 @@ const PAIRS = {
 
 /* ── UTILITIES ── */
 // Visible build stamp — bump this each deploy to confirm the latest page loaded.
-const BUILD='build 15 · Jun 21';
+const BUILD='build 16 · Jun 21';
 const INTAKE_EMAIL='trips@mattyip.dev';
 
 const PREF_OPTS=[
@@ -1352,7 +1352,7 @@ function SwipeCard({onSwipeRight,onSwipeRightFar,onSwipeLeft,onTap,labels={},chi
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 22px',
         background:dx>0?rBg:dx<0?'linear-gradient(90deg,#F6F6FA 40%,#ECEDF6 100%)':'transparent'}}>
         <span style={{opacity:rOp,display:'inline-flex',alignItems:'center',gap:6,color:rColor,fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15,transition:'color .12s'}}>{rLabel}</span>
-        <span style={{opacity:lOp,display:'inline-flex',alignItems:'center',gap:6,color:'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>{L.left}</span>
+        <span style={{opacity:lOp,display:'inline-flex',alignItems:'center',gap:6,color:L.leftColor||'#6C6E8E',fontFamily:"'Hanken Grotesk',sans-serif",fontWeight:700,fontSize:15}}>{L.left}</span>
       </div>
       <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}
         style={{transform:`translateX(${dx}px) rotate(${dx*0.016}deg)`,transition:anim?'transform .19s ease':'none',touchAction:'pan-y',position:'relative'}}>
@@ -2460,7 +2460,7 @@ function ScratchCard({item,onAnchor,onRemove}){
   );
 }
 
-function DocsOverlay({pop,push,trip}){
+function DocsOverlay({pop,push,trip,onDelete}){
   const docs=Array.isArray(trip.documents)?trip.documents:[];
   const docTime=v=>{ if(!v) return ''; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   return(
@@ -2479,17 +2479,19 @@ function DocsOverlay({pop,push,trip}){
             <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13.5,color:'#6C6E8E',lineHeight:1.45,marginTop:6}}>Forward an email and include “save this for the trip on July 10” or “save this for the trip in Paris.” Anchor will attach it to the matching trip.</div>
           </div>
         ):docs.map(doc=>(
-          <button key={doc.id} onClick={()=>push({type:'doc',docId:doc.id})} style={{width:'100%',textAlign:'left',border:'none',background:'#fff',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',marginBottom:10,cursor:'pointer'}}>
-            <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
-              <div style={{width:38,height:38,borderRadius:12,background:'#FFF2DF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.2}}>{doc.title||doc.subject||'Trip document'}</div>
-                <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:3}}>{[doc.kind,docTime(doc.receivedAt)].filter(Boolean).join(' · ')}</div>
-                {doc.summary&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.35,marginTop:7}}>{doc.summary}</div>}
+          <SwipeCard key={doc.id} labels={{left:'Delete',leftColor:'#D8553C'}} onSwipeLeft={()=>onDelete&&onDelete(doc.id)} onTap={()=>push({type:'doc',docId:doc.id})}>
+            <div style={{width:'100%',textAlign:'left',border:'none',background:'#fff',borderRadius:16,padding:'14px',boxShadow:'0 1px 2px rgba(22,23,42,0.05),0 6px 16px rgba(22,23,42,0.06)',marginBottom:10,cursor:'pointer'}}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                <div style={{width:38,height:38,borderRadius:12,background:'#FFF2DF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#B76E18" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Schibsted Grotesk',sans-serif",fontWeight:700,fontSize:15.5,color:'#16172A',lineHeight:1.2}}>{doc.title||doc.subject||'Trip document'}</div>
+                  <div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:12.5,color:'#9092AD',marginTop:3}}>{[doc.kind,docTime(doc.receivedAt)].filter(Boolean).join(' · ')}</div>
+                  {doc.summary&&<div style={{fontFamily:"'Hanken Grotesk',sans-serif",fontSize:13,color:'#6C6E8E',lineHeight:1.35,marginTop:7}}>{doc.summary}</div>}
+                </div>
+                <ChevRight/>
               </div>
-              <ChevRight/>
             </div>
-          </button>
+          </SwipeCard>
         ))}
       </div>
     </div>
@@ -3127,6 +3129,11 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const saveNearby=p=>stashLive(p,'idea');
   // Remove an anchor: curated toggles off; a scratch place reverts to an idea (kept in scratchpad).
   const unanchor=ref=>{ if(ref.kind==='curated') handleAnchorPlace(ref.id); else anchorScratch(ref.id); };
+  const deleteDocument=id=>{
+    if(!id) return;
+    persist({...trip,documents:(trip.documents||[]).filter(d=>d.id!==id)});
+    setStack(st=>st.filter(x=>!(x.type==='doc'&&x.docId===id)));
+  };
 
   const addToDay=(dayIndex,ref)=>{
     const it={...(trip.itinerary||{})};
@@ -3169,7 +3176,7 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
         {top&&top.type==='place'  &&<PlaceDetailOverlay key={top.id} id={top.id} pop={pop} push={push} trip={trip} onAnchorPlace={handleAnchorPlace} onAddToDay={addToDay}/>}
         {top&&top.type==='anchor' &&<AnchorDetailOverlay key={top.anchorId} anchorId={top.anchorId} pop={pop} push={push} trip={trip}/>}
         {top&&top.type==='trip'   &&<TripOverlay pop={pop} push={push} trip={trip} user={user} cloud={cloud} onLogout={onLogout} onSignIn={onSignIn}/>}
-        {top&&top.type==='docs'   &&<DocsOverlay pop={pop} push={push} trip={trip}/>}
+        {top&&top.type==='docs'   &&<DocsOverlay pop={pop} push={push} trip={trip} onDelete={deleteDocument}/>}
         {top&&top.type==='doc'    &&<DocumentOverlay pop={pop} doc={(trip.documents||[]).find(d=>d.id===top.docId)}/>}
         {top&&top.type==='scratch'&&<ScratchpadOverlay pop={pop} trip={trip} onAdd={addScratch} onAnchor={anchorScratch} onRemove={removeScratch}/>}
         {top&&top.type==='discoverchat'&&<DiscoverChatOverlay pop={pop} trip={trip} onLearn={learnTaste} onRemoveTaste={removeTaste} onOptimize={optimizeSearch} optimizing={optimizing}/>}

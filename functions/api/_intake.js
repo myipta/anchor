@@ -59,14 +59,34 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
   const docIntent = hasDocumentSaveRequest({ subject, text: cleanText })
     ? await extractDocumentInfo(env, { subject, text: cleanText, from })
     : null;
-  const targetTrip = docIntent?.saveDocument ? matchTripForDocument(library, docIntent) : activeTrip;
+  const saveDocument = Boolean(docIntent?.saveDocument && isUsefulDocumentInfo(docIntent, { subject, text: cleanText }));
+  const targetTrip = saveDocument ? matchTripForDocument(library, docIntent) : activeTrip;
   const extracted = await extractTravelInfo(env, { subject, text: cleanText, from });
-  if (docIntent?.saveDocument && docIntent.summary) extracted.summary = docIntent.summary;
+  const usefulTravel = hasUsefulTravelFacts(extracted);
+  if (saveDocument && docIntent.summary) extracted.summary = docIntent.summary;
   const before = summarizeTrip(targetTrip);
-  const merged = await mergeTravelIntoTrip(env, targetTrip, extracted, { subject, from, receivedAt });
-  if (docIntent?.saveDocument) {
+
+  if (!usefulTravel && !saveDocument) {
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'no_useful_travel_or_document_content',
+      extracted,
+      document: docIntent ? { ...docIntent, saveDocument: false } : null,
+      applied: { hotel: false, flights: 0, inbox: false, document: false, detachedStops: 0 },
+      before,
+      after: before,
+    };
+  }
+
+  const merged = usefulTravel
+    ? await mergeTravelIntoTrip(env, targetTrip, extracted, { subject, from, receivedAt })
+    : { trip: { ...targetTrip }, applied: { hotel: false, flights: 0, inbox: false, detachedStops: 0 } };
+  if (saveDocument) {
     merged.trip = addDocumentToTrip(merged.trip, docIntent, { subject, text: cleanText, from, receivedAt, matchedTripId: targetTrip.id });
     merged.applied.document = true;
+  } else {
+    merged.applied.document = false;
   }
   const now = Date.now();
   merged.trip.updatedAt = now;
@@ -75,16 +95,16 @@ export async function ingestTravelEmail(env, user, { subject = '', text = '', fr
   if (row) await env.DB.prepare('UPDATE trips SET data=?, updated_at=? WHERE user_id=?').bind(dataStr, now, user.id).run();
   else await env.DB.prepare('INSERT INTO trips (id, user_id, data, updated_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), user.id, dataStr, now).run();
 
-  return { ok: true, extracted, document: docIntent, applied: merged.applied, before, after: summarizeTrip(merged.trip), updated_at: now };
+  return { ok: true, extracted, document: saveDocument ? docIntent : (docIntent ? { ...docIntent, saveDocument: false } : null), applied: merged.applied, before, after: summarizeTrip(merged.trip), updated_at: now };
 }
 
 async function extractTravelInfo(env, { subject, text, from }) {
   const fallback = fallbackExtract({ subject, text });
   if (!env.ANTHROPIC_API_KEY) return fallback;
 
-  const system = 'You extract flight and hotel reservation facts from forwarded travel emails. Return ONLY valid JSON. Dates/times should be ISO-like strings when present. If a field is unknown, use an empty string or omit it. Do not invent facts.';
+  const system = 'You extract flight and hotel reservation facts from forwarded travel emails. Return ONLY valid JSON. Only extract from clear airline, hotel, booking, reservation, itinerary, or confirmation emails. If the email is a dummy/test/random note or does not contain explicit travel reservation facts, return empty hotel and flights. Dates/times should be ISO-like strings when present. If a field is unknown, use an empty string or omit it. Do not invent facts.';
   const user = 'Return this JSON shape:\n' +
-    '{"summary":"one short summary","hotel":{"name":"","address":"","area":"Tokyo neighborhood/city if clear","checkinDate":"YYYY-MM-DD","checkoutDate":"YYYY-MM-DD","confirmationNumber":""},"flights":[{"airline":"","flightNumber":"","confirmationNumber":"","departAirport":"IATA or airport name","departCity":"","departAt":"YYYY-MM-DDTHH:mm or date/time text","arriveAirport":"IATA or airport name","arriveCity":"","arriveAt":"YYYY-MM-DDTHH:mm or date/time text","terminal":"","seat":""}]}\n\n' +
+    '{"summary":"one short summary or No travel facts found.","hotel":{"name":"","address":"","area":"Tokyo neighborhood/city if clear","checkinDate":"YYYY-MM-DD","checkoutDate":"YYYY-MM-DD","confirmationNumber":""},"flights":[{"airline":"","flightNumber":"","confirmationNumber":"","departAirport":"IATA or airport name","departCity":"","departAt":"YYYY-MM-DDTHH:mm or date/time text","arriveAirport":"IATA or airport name","arriveCity":"","arriveAt":"YYYY-MM-DDTHH:mm or date/time text","terminal":"","seat":""}]}\n\n' +
     'From: ' + (from || '(unknown)') + '\nSubject: ' + (subject || '(none)') + '\nEmail text:\n' + text.slice(0, MAX_EMAIL_CHARS);
   const out = await callClaudeSonnet(env, { system, user, maxTokens: 1200 });
   if (out.error) return fallback;
@@ -263,7 +283,7 @@ function normalizeExtracted(parsed, fallback) {
       arriveAt: str(f.arriveAt || f.arrival || f.arrivalTime, 80),
       terminal: str(f.terminal, 40),
       seat: str(f.seat, 30),
-    })).filter(f => f.flightNumber || f.airline || f.departAirport || f.arriveAirport),
+    })).filter(isCredibleFlight),
   };
   if ((!out.flights || !out.flights.length) && fallback.flights.length) out.flights = fallback.flights;
   if (!hasHotel(out.hotel) && hasHotel(fallback.hotel)) out.hotel = fallback.hotel;
@@ -447,15 +467,16 @@ function htmlToText(html) {
 
 function fallbackExtract({ subject, text }) {
   const hay = String(subject || '') + '\n' + String(text || '');
-  const flights = [...hay.matchAll(/\b([A-Z0-9]{2})\s?([0-9]{1,4}[A-Z]?)\b/g)]
+  const travelish = looksLikeTravelEmail(hay);
+  const flights = travelish ? [...hay.matchAll(/\b([A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])\s?([0-9]{1,4}[A-Z]?)\b/g)]
     .map(m => ({ flightNumber: normalizeFlightNumber(m[1] + m[2]) }))
     .filter((f, i, arr) => f.flightNumber && arr.findIndex(x => x.flightNumber === f.flightNumber) === i)
-    .slice(0, 6);
-  const conf = (hay.match(/(?:confirmation|booking|reservation|record locator|pnr)[\s#:]*([A-Z0-9]{5,12})/i) || [])[1] || '';
+    .slice(0, 6) : [];
+  const conf = travelish ? ((hay.match(/(?:confirmation|booking|reservation|record locator|pnr)[\s#:]*([A-Z0-9]{5,12})/i) || [])[1] || '') : '';
   flights.forEach(f => { if (conf) f.confirmationNumber = conf; });
-  const hotelName = (hay.match(/(?:hotel|stay|property)[:\s-]+([^\n]{4,90})/i) || [])[1] || '';
+  const hotelName = travelish ? ((hay.match(/(?:hotel|stay|property)[:\s-]+([^\n]{4,90})/i) || [])[1] || '') : '';
   return {
-    summary: flights.length ? 'Imported ' + flights.length + ' flight' + (flights.length === 1 ? '' : 's') + '.' : (hotelName ? 'Imported hotel details.' : 'Imported travel email.'),
+    summary: flights.length ? 'Imported ' + flights.length + ' flight' + (flights.length === 1 ? '' : 's') + '.' : (hotelName ? 'Imported hotel details.' : 'No travel facts found.'),
     hotel: hotelName ? { name: hotelName.trim(), confirmationNumber: conf } : null,
     flights,
   };
@@ -463,9 +484,10 @@ function fallbackExtract({ subject, text }) {
 
 function normalizeFlight(f, receivedAt) {
   const flightNumber = normalizeFlightNumber(f.flightNumber);
-  if (!flightNumber && !f.airline) return null;
+  const candidate = { ...f, flightNumber };
+  if (!isCredibleFlight(candidate)) return null;
   return {
-    id: flightKey({ ...f, flightNumber }) || ('flight-' + receivedAt + '-' + Math.random().toString(36).slice(2, 7)),
+    id: flightKey(candidate) || ('flight-' + receivedAt + '-' + Math.random().toString(36).slice(2, 7)),
     airline: str(f.airline, 80),
     flightNumber,
     confirmationNumber: str(f.confirmationNumber, 80),
@@ -513,8 +535,37 @@ function normalizeName(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+export function hasUsefulTravelFacts(extracted) {
+  return Boolean(extracted && (hasHotel(extracted.hotel) || (Array.isArray(extracted.flights) && extracted.flights.some(isCredibleFlight))));
+}
+
+export function isUsefulDocumentInfo(doc, meta = {}) {
+  if (!doc || doc.saveDocument === false) return false;
+  const clean = cleanDocumentText(doc.cleanText || doc.text || meta.text || '');
+  const words = clean.split(/\s+/).filter(w => /[a-z0-9]/i.test(w)).length;
+  const chars = clean.replace(/\s/g, '').length;
+  const hay = (String(meta.subject || doc.title || '') + '\n' + clean).toLowerCase();
+  if (chars < 80 && words < 12) return false;
+  if (/\b(dummy|random|test email|just testing|ignore this|asdf|lorem ipsum)\b/i.test(hay) && words < 35) return false;
+  return clean.split(/\n+/).some(line => line.trim().length >= 18 && !/save\s+this\s+for\s+(the\s+)?trip/i.test(line));
+}
+
+function isCredibleFlight(f) {
+  if (!f) return false;
+  const flightNumber = normalizeFlightNumber(f.flightNumber);
+  const hasRoute = Boolean(str(f.departAirport || f.departCity, 80) || str(f.arriveAirport || f.arriveCity, 80));
+  const hasTime = Boolean(str(f.departAt, 80) || str(f.arriveAt, 80));
+  return Boolean((flightNumber && (hasRoute || hasTime)) || (hasRoute && hasTime && str(f.airline, 80)));
+}
+
+function looksLikeTravelEmail(value) {
+  return /\b(flight|airline|boarding|departure|arrival|arrives|departs|airport|terminal|gate|seat|pnr|record locator|hotel|check-?in|check-?out|reservation|booking|confirmation|itinerary)\b/i.test(String(value || ''));
+}
+
 function hasHotel(hotel) {
-  return Boolean(hotel && (hotel.name || hotel.address || hotel.checkinDate || hotel.checkoutDate));
+  if (!hotel) return false;
+  const name = str(hotel.name, 120);
+  return Boolean(name && (hotel.address || hotel.checkinDate || hotel.checkoutDate || hotel.confirmationNumber));
 }
 
 function str(value, max = 120) {

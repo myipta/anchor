@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "npm run build && node scripts/check-backend.mjs && node scripts/check-routes.mjs",
+    "check": "npm run build && node scripts/check-backend.mjs && node scripts/check-routes.mjs && node scripts/check-intake.mjs",
     "deploy": "npm run build && npx wrangler deploy",
     "ios:add": "cap add ios",
     "ios:sync": "cap sync ios",
@@ -26,5 +26,6 @@
     "@vitejs/plugin-react": "^6.0.2",
     "vite": "^8.0.16",
     "wrangler": "^4.103.0"
-  }
+  },
+  "type": "module"
 }
