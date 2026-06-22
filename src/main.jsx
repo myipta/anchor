@@ -3132,13 +3132,13 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   },[]); // eslint-disable-line
 
   // Single commit path: local cache (instant/offline) + cloud sync (cross-device).
-  const persistLibrary=React.useCallback(lib=>{
+  const persistLibrary=React.useCallback((lib,opts={})=>{
     const next={...toTripLibrary(lib),updatedAt:Date.now()};
-    saveTrip(next); setTripLibrary(next); onCloudSync&&onCloudSync(next);
+    saveTrip(next); setTripLibrary(next); onCloudSync&&onCloudSync(next,opts);
   },[onCloudSync]);
-  const persist=nt=>{
+  const persist=(nt,opts={})=>{
     const t={...nt,updatedAt:Date.now()};
-    persistLibrary(updateActiveTrip(tripLibrary,t));
+    persistLibrary(updateActiveTrip(tripLibrary,t),opts);
   };
   // Persist a freshly bootstrapped blank trip, and migrate legacy single-trip
   // local/cloud blobs into the trip-library shape without losing data.
@@ -3311,7 +3311,8 @@ function App({initialTrip,user,cloud,onLogout,onCloudSync,onSignIn}){
   const unanchor=ref=>{ if(ref.kind==='curated') handleAnchorPlace(ref.id); else anchorScratch(ref.id); };
   const deleteDocument=id=>{
     if(!id) return;
-    persist({...trip,documents:(trip.documents||[]).filter(d=>d.id!==id)});
+    const deleted=[...new Set([...(trip.deletedDocumentIds||[]),id])].slice(-200);
+    persist({...trip,documents:(trip.documents||[]).filter(d=>d.id!==id),deletedDocumentIds:deleted},{immediate:true});
     setStack(st=>st.filter(x=>!(x.type==='doc'&&x.docId===id)));
   };
 
@@ -3477,8 +3478,9 @@ function Root(){
   })();},[]); // eslint-disable-line
 
   // Debounced cloud save (only when signed in).
-  const onCloudSync=React.useCallback(nt=>{
+  const onCloudSync=React.useCallback((nt,opts={})=>{
     clearTimeout(syncTimer.current);
+    if(opts.immediate){ API.tripPut(nt); return; }
     syncTimer.current=setTimeout(()=>{API.tripPut(nt);},800);
   },[]);
 

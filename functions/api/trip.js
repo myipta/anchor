@@ -162,7 +162,11 @@ function shouldPreserveField(existingTrip, incomingTrip, field, stale, alwaysWhe
 function mergeTrip(existing, incoming, { stale }) {
   const oldTrip = ensureTrip(existing);
   const newTrip = ensureTrip(incoming);
+  const deletedDocumentIds = mergeDeletedDocumentIds(oldTrip, newTrip);
+  if (Array.isArray(oldTrip.documents)) oldTrip.documents = filterDeletedDocuments(oldTrip.documents, deletedDocumentIds);
+  if (Array.isArray(newTrip.documents)) newTrip.documents = filterDeletedDocuments(newTrip.documents, deletedDocumentIds);
   const next = { ...oldTrip, ...newTrip };
+  if (deletedDocumentIds.length) next.deletedDocumentIds = deletedDocumentIds;
 
   if ((!newTrip.destination || (/^tokyo$/i.test(newTrip.destination) && oldTrip.destination && !/^tokyo$/i.test(oldTrip.destination)))) {
     next.destination = oldTrip.destination;
@@ -189,6 +193,25 @@ function mergeTrip(existing, incoming, { stale }) {
 
   next.updatedAt = Math.max(Number(oldTrip.updatedAt) || 0, Number(newTrip.updatedAt) || 0);
   return ensureTrip(next);
+}
+
+function mergeDeletedDocumentIds(existingTrip, incomingTrip) {
+  const out = new Set();
+  const add = value => {
+    if (typeof value === 'string') out.add(value);
+    else if (value && typeof value === 'object' && value.id) out.add(String(value.id));
+  };
+  (Array.isArray(existingTrip?.deletedDocumentIds) ? existingTrip.deletedDocumentIds : []).forEach(add);
+  (Array.isArray(existingTrip?.deletedDocuments) ? existingTrip.deletedDocuments : []).forEach(add);
+  (Array.isArray(incomingTrip?.deletedDocumentIds) ? incomingTrip.deletedDocumentIds : []).forEach(add);
+  (Array.isArray(incomingTrip?.deletedDocuments) ? incomingTrip.deletedDocuments : []).forEach(add);
+  return [...out].filter(Boolean).slice(-200);
+}
+
+function filterDeletedDocuments(documents, deletedIds) {
+  if (!Array.isArray(documents) || !deletedIds.length) return documents;
+  const deleted = new Set(deletedIds);
+  return documents.filter(doc => !doc?.id || !deleted.has(String(doc.id)));
 }
 
 export function mergeTripDataForSave(existingData, incomingData, { existingUpdatedAt = 0, now = Date.now() } = {}) {

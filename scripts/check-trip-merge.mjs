@@ -55,4 +55,18 @@ const missingFlightsCurrentClient = mergeTripDataForSave(existing, {
 }, { existingUpdatedAt: 1600, now });
 assert.equal(missingFlightsCurrentClient.trips.find(t => t.id === 'tokyo').flights.length, 1);
 
+const deletedDocStaysDeleted = mergeTripDataForSave({
+  version: 2,
+  activeTripId: 'tokyo',
+  updatedAt: 1900,
+  trips: [{ ...existing.trips[0], documents: [], deletedDocumentIds: ['doc-1'], updatedAt: 1900 }],
+}, {
+  version: 2,
+  activeTripId: 'tokyo',
+  updatedAt: 1500,
+  trips: [{ ...existing.trips[0], updatedAt: 1500 }],
+}, { existingUpdatedAt: 1900, now });
+assert.equal(deletedDocStaysDeleted.trips.find(t => t.id === 'tokyo').documents.length, 0);
+assert.deepEqual(deletedDocStaysDeleted.trips.find(t => t.id === 'tokyo').deletedDocumentIds, ['doc-1']);
+
 console.log('trip merge guardrails ok');
