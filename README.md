@@ -1,22 +1,71 @@
-# CODING AGENTS: READ THIS FIRST
+# Anchor
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+A personal AI travel concierge. Forward it your booking confirmations and it turns
+them into a structured trip: flights, hotels, and documents become live context that
+a Claude-powered concierge plans around.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+Built solo, with Claude Code and Claude Design, as a working answer to a simple
+annoyance: every trip I take lives in ten confirmation emails, three apps, and a
+notes file. Anchor makes the trip itself the object.
 
-## What you should do — IMPORTANT
+## What it does
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+**Email intake.** Forward a flight or hotel confirmation to a dedicated intake
+address and it lands in the right trip as structured data: airline, record locator,
+terminal, gate, seat, boarding time, check-in link. No forms. The parser ignores
+junk and refuses to let a date-only stub or a test email mutate a real trip.
 
-**Read `project/Anchor.dc.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+**A concierge with real context.** The chat isn't a generic travel bot. It knows
+your arrival time, airport, hotel neighborhood, and saved places, and plans around
+them: what to do near the hotel on landing day, where to eat that isn't another
+hotel restaurant. Recommendation filtering is deterministic first, taste-ranked
+second.
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+**Today view.** The day's plan as a timeline: arrival flights render as stops,
+imported documents surface when relevant, and the layout comes in three deliberate
+modes (map-first, sheet-over-map, compact list).
 
-## About the design files
+**Multi-trip.** Trips are scoped: chat history, anchors, itinerary, flights, and
+documents belong to one trip. New trips inherit only your preferences and taste,
+never another trip's data.
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+## Stack
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+- Cloudflare Workers + D1, with Cloudflare Email Routing feeding the intake parser
+- Claude API for the concierge, with trip state passed as context
+- Web app via Vite; iOS build via Capacitor
+- Google Places and Tabelog-flavored search for Japan trips
+
+## Why it's built this way
+
+The interesting problem isn't the UI, it's the pipeline: messy personal inputs
+(emails, forwards, scraps) becoming structured context that makes a personalized
+product possible. That pattern generalizes well beyond travel.
+
+## Product invariants
+
+These are the rules the codebase holds, written as instructions to the coding
+agents that help build it:
+
+- Restaurant cards must exclude lodging. The API filters hotel/ryokan-style
+  categories and the current stay deterministically; LLM taste-ranking is never
+  the only exclusion mechanism.
+- Intake must not corrupt trips. Sender addresses are allowlisted, date-only
+  hotels and flight-number stubs are ignored, and document-only emails don't
+  create import rows.
+- Trip normalization must never coerce a missing destination to a default city.
+  Fallback copy can say Tokyo; persisted data cannot.
+- Non-Japan trips are first-class: no Tabelog links, no refusals, no backfilling
+  a Denver trip with curated Tokyo places.
+- Imported flights are context, not storage. Landing time changes what Day 1
+  shows and what the concierge suggests.
+- The three Today layouts stay distinct. If they collapse into three copies of
+  the same timeline, that's a regression.
+
+## Status
+
+Personal project, actively used on real trips. PDF/image OCR for attachments and
+live flight-status refresh are the known next pieces.
 
 ## Bundle contents
 
