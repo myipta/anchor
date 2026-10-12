@@ -88,3 +88,7 @@ live flight-status refresh are the known next pieces.
 - Multi-city foundation: Search/concierge now reads the active trip destination, keeps chat history scoped per trip, and sends destination-aware Google Places queries. Japan trips can still use Tabelog-flavored behavior; non-Japan trips such as Denver should not be refused, shown Tabelog links, or routed through `/api/tabelog`; use `/api/search` directly. Today must not backfill non-Tokyo trips with curated Tokyo places; until live local Today suggestions are implemented, non-Tokyo Today uses flights, hotels, anchors, saved places, documents, and a Search prompt. Remaining work: generalize Discover built-in content beyond Tokyo.
 
 - Today layout modes are intentionally distinct: Map is map-first, Sheet is a draggable-style card over the map, and List is a compact no-map list. Do not let these collapse back into three copies of the same timeline.
+
+## Spy Words (shared Worker)
+
+This Worker also serves the opt-in Spy Words vocabulary AI Bridge under `/spywords/*`, without modifying Anchor trip, account, or email routes. See [SPYWORDS_SETUP.md](SPYWORDS_SETUP.md) for one-time encrypted secret setup, deployment, and iPhone configuration. The changes are not live until deployed.

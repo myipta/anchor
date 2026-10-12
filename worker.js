@@ -28,6 +28,7 @@ import { onRequest as authLogout } from './functions/api/auth-logout.js';
 import { onRequest as trip } from './functions/api/trip.js';
 import { onRequest as intakeEmail } from './functions/api/intake-email.js';
 import { onRequest as attachment } from './functions/api/attachment.js';
+import { handleSpyWordsRequest } from './functions/spywords-handler.mjs';
 import { getUser, unauthorized } from './functions/api/_auth.js';
 import { ingestTravelEmail, readEmailMessage, userForInboundEmail } from './functions/api/_intake.js';
 
@@ -65,6 +66,9 @@ const ROUTES = {
 
 export default {
   async fetch(request, env, ctx) {
+    // Spy Words routes are independent of Anchor's travel/session/email APIs.
+    const spyWordsResponse = await handleSpyWordsRequest(request, env);
+    if (spyWordsResponse) return spyWordsResponse;
     const { pathname } = new URL(request.url);
     const handler = ROUTES[pathname];
     if (handler) {
