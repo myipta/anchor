@@ -1,0 +1,49 @@
+name: Build Anchor static assets for Cloudflare
+# Temporary compatibility for Cloudflare Workers Builds deployments where
+# the dashboard Build command is not configured. Cloudflare's wrangler deploy
+# expects ./dist, so include Vite's real output in the repository.
+# Once Cloudflare Settings > Builds has "npm run build", this workaround
+# can be removed and dist can return to ignored-only.
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "dist/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: anchor-dist-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-static-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Anchor
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Build complete frontend
+        run: npm run build
+      - name: Commit generated public assets for Workers deployment
+        run: |
+          git add --force --all dist/
+          if git diff --cached --quiet; then
+            echo "dist matches main; no commit needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build: update published Anchor frontend assets"
+          git push origin HEAD:main
