@@ -1,0 +1,27 @@
+name: Spy Words AI Bridge tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions/spywords-handler.mjs"
+      - "functions/spywords-sync.mjs"
+      - "scripts/check-spywords.mjs"
+      - "scripts/check-spywords-sync.mjs"
+      - "worker.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/spywords-api-tests.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run check

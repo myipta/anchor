@@ -6,7 +6,6 @@
  */
 import { handleSpyWordsSync } from './spywords-sync.mjs';
 
-const DEFAULT_MODEL = 'gpt-4.1-mini';
 const MAX_BODY = 64 * 1024;
 const limits = new Map(); // per-isolate safety guard, NOT a durable global rate limit.
 
@@ -76,27 +75,78 @@ const clueSchema = {type:'object',additionalProperties:false,properties:{clues:{
 
 
 // Workers receive secrets as env bindings; do not deploy the key in source or vars.
-async function openaiJSON(env, { instructions, input, schema, schemaName, maxTokens }) {
-    const key = env.OPENAI_API_KEY;
-    if (!key) throw Object.assign(new Error('OPENAI_API_KEY is not configured on this Worker'), {status:503});
-    const response = await fetch('https://api.openai.com/v1/responses', {
-        method:'POST',
-        headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},
-        body:JSON.stringify({model:env.OPENAI_MODEL || DEFAULT_MODEL,store:false,instructions,input,
-            text:{format:{type:'json_schema',name:schemaName,strict:true,schema}},max_output_tokens:maxTokens}),
-        signal:AbortSignal.timeout(90000)
-    });
-    if (!response.ok) {
-        // Never return provider response text (which can contain sensitive details).
-        console.error('Spy Words: OpenAI request failed', response.status);
-        throw Object.assign(new Error('The text-generation service is unavailable'),{status:502});
+function selectProvider(env) {
+    // Default to Claude; use DeepSeek when Claude is not bound.
+    // An explicitly configured provider never silently falls back.
+    const selected = String(env.SPYWORDS_AI_PROVIDER || '').trim().toLowerCase();
+    if (selected && !['claude', 'deepseek'].includes(selected))
+        throw Object.assign(new Error('Invalid SPYWORDS_AI_PROVIDER setting'), {status:503});
+    const provider = selected || (env.ANTHROPIC_API_KEY ? 'claude' : 'deepseek');
+    const key = provider === 'claude' ? env.ANTHROPIC_API_KEY : env.DEEPSEEK_API_KEY;
+    if (!key) throw Object.assign(new Error('No configured AI provider for Spy Words'), {status:503});
+    return {provider, key};
+}
+
+// Keys remain encrypted Worker secrets and are never sent to iOS.
+async function providerJSON(env, { instructions, input, schema, schemaName, maxTokens }) {
+    const {provider, key} = selectProvider(env);
+    let response;
+    if (provider === 'claude') {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+            method:'POST',
+            headers:{
+                'x-api-key':key,
+                'anthropic-version':'2023-06-01',
+                'Content-Type':'application/json'
+            },
+            body:JSON.stringify({
+                model: env.SPYWORDS_CLAUDE_MODEL || env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+                max_tokens:maxTokens,
+                system:instructions,
+                messages:[{role:'user',content:input}],
+                tools:[{name:schemaName,description:'Return Spy Words structured study material',input_schema:schema}],
+                tool_choice:{type:'tool',name:schemaName,disable_parallel_tool_use:true}
+            }),
+            signal:AbortSignal.timeout(90000)
+        });
+    } else {
+        response = await fetch('https://api.deepseek.com/chat/completions', {
+            method:'POST',
+            headers:{Authorization:'Bearer ' + key,'Content-Type':'application/json'},
+            body:JSON.stringify({
+                model:env.SPYWORDS_DEEPSEEK_MODEL || env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
+                messages:[
+                    {role:'system',content:instructions + '\nReturn a JSON object only. It must conform to this JSON schema: ' + JSON.stringify(schema)},
+                    {role:'user',content:input}
+                ],
+                response_format:{type:'json_object'},
+                thinking:{type:'disabled'},
+                max_tokens:maxTokens,
+                stream:false
+            }),
+            signal:AbortSignal.timeout(90000)
+        });
     }
-    const result = await response.json();
-    const text = (result.output || []).flatMap(x => x.content || [])
-        .filter(x => x.type === 'output_text').map(x => x.text).join('');
-    if (!text) throw Object.assign(new Error('The model returned no usable structured content'),{status:502});
-    try { return JSON.parse(text); }
-    catch { throw Object.assign(new Error('The model returned invalid JSON'),{status:502}); }
+    if (!response.ok) {
+        // Never send upstream response bodies or credentials to the app.
+        console.error('Spy Words AI provider failed:',provider,response.status);
+        throw Object.assign(new Error('The AI provider is temporarily unavailable'),{status:502});
+    }
+    let output;
+    try {
+        const data = await response.json();
+        if (provider === 'claude') {
+            output = data.content?.find(b => b.type === 'tool_use' && b.name === schemaName)?.input;
+        } else {
+            const raw = data.choices?.[0]?.message?.content;
+            output = typeof raw === 'string' ? JSON.parse(raw) : null;
+        }
+    } catch {
+        throw Object.assign(new Error('The AI provider did not return valid JSON'),{status:502});
+    }
+    if (!output || typeof output !== 'object' || Array.isArray(output))
+        throw Object.assign(new Error('The AI provider returned no usable study content'),{status:502});
+    return output;
 }
 
 function json(status, data, allowedOrigin = '') {
@@ -207,7 +257,7 @@ export async function handleSpyWordsRequest(request, env) {
                         existing.some(e => e.toLowerCase() === w.toLowerCase())))))
                 return send(400,{error:'Provide 1–12 distinct new words, or a valid count (1–12).'});
             const parentChoseWords=Array.isArray(requested);
-            const output = await openaiJSON(env, {
+            const output = await providerJSON(env, {
                 schema:packSchema,schemaName:'spy_word_pack',maxTokens:10500,
                 instructions:`You create ACCURATE, age-appropriate ISEE middle-grade vocabulary study materials for a 10–12 year old.
                 ${parentChoseWords ? `The PARENT chose exactly ${count} words. Use precisely these words in exactly the supplied order and spelling; NEVER swap, add, or omit a word.` : `Choose exactly ${count} DISTINCT established English vocabulary words, not neologisms, not proper nouns, not already in the provided list. Aim for authentic ISEE/SSAT 5th–7th grade difficulty.`}
@@ -248,7 +298,7 @@ export async function handleSpyWordsRequest(request, env) {
             !nonempty(q.lemma) || !nonempty(q.definition) || !nonempty(q.answer) ||
             !nonempty(q.originalSentence) || q.originalSentence.length>400))
             return send(400,{error:'Invalid question list (1–48 fillIn/typed questions required)'});
-        const output=await openaiJSON(env, {
+        const output=await providerJSON(env, {
             schema:clueSchema,schemaName:'spy_fresh_clues',maxTokens:4500,
             instructions:`You write NEW, age-appropriate spy/adventure ISEE vocabulary fill-in sentences.
             For EVERY input question return its exact id and a DIFFERENT novel sentence containing precisely one ___ where the EXACT specified answer belongs, with correct grammar and word form.
