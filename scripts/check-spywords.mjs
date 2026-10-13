@@ -10,7 +10,7 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 const BASE = 'https://anchor.example';
 const token = 'LOCAL-TEST-TOKEN-NOT-A-REAL-SECRET';
 const env = {
-  OPENAI_API_KEY: 'LOCAL-MOCK-KEY',
+  ANTHROPIC_API_KEY: 'LOCAL-MOCK-KEY',
   SPYWORDS_BRIDGE_TOKEN: token,
   LIMIT_PER_HOUR: '100',
   ASSETS: { fetch: async () => new Response('Anchor frontend asset', { status: 200 }) },
@@ -91,12 +91,14 @@ test('Parent vocabulary facts are preserved when AI generates exercises', async 
   assert.equal(validatePack([word], [], 1), true);
   const savedFetch = globalThis.fetch;
   globalThis.fetch = async (url, opts) => {
-    assert.equal(url, 'https://api.openai.com/v1/responses');
-    assert.equal(opts.headers.Authorization, 'Bearer LOCAL-MOCK-KEY');
-    return new Response(JSON.stringify({ output: [{ content: [{
-      type: 'output_text',
-      text: JSON.stringify({ words: [{ ...word, definition: 'an incorrect AI definition' }] }),
-    }] }] }), { status: 200 });
+    assert.equal(url, 'https://api.anthropic.com/v1/messages');
+    assert.equal(opts.headers['x-api-key'], 'LOCAL-MOCK-KEY');
+    const body=JSON.parse(opts.body);
+    assert.equal(body.model, 'claude-sonnet-4-6');
+    assert.equal(body.tool_choice.name, 'spy_word_pack');
+    assert.deepEqual(JSON.parse(body.messages[0].content).parentSuppliedEntries?.map(x => x.lemma), ['astute']);
+    return new Response(JSON.stringify({content:[{type:'tool_use',name:'spy_word_pack',
+      input:{words:[{...word,definition:'an incorrect AI definition'}]}}]}), {status:200});
   };
   const source = {
     lemma: 'astute',
@@ -122,6 +124,65 @@ test('Parent vocabulary facts are preserved when AI generates exercises', async 
   } finally {
     globalThis.fetch = savedFetch;
   }
+});
+
+
+test('Uses DeepSeek with existing secret when explicitly selected', async () => {
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async (url,opts) => {
+    assert.equal(url,'https://api.deepseek.com/chat/completions');
+    assert.equal(opts.headers.Authorization,'Bearer LOCAL-DEEPSEEK-KEY');
+    const body=JSON.parse(opts.body);
+    assert.equal(body.model,'deepseek-v4-pro');
+    assert.equal(body.response_format.type,'json_object');
+    assert.equal(body.thinking.type,'disabled');
+    return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({words:[word]})}}]}),{status:200});
+  };
+  try {
+    const settings={...env,SPYWORDS_AI_PROVIDER:'deepseek',DEEPSEEK_API_KEY:'LOCAL-DEEPSEEK-KEY'};
+    const result=await anchor.fetch(request('/spywords/v1/packs/generate','POST',
+      {existingWords:[],count:1,requestedWords:['astute']}),settings,{});
+    assert.equal(result.status,200,JSON.stringify(await result.clone().json()));
+    assert.equal((await result.json()).pack.words[0].lemma,'astute');
+  } finally {globalThis.fetch=originalFetch;}
+});
+
+test('Falls back to existing DeepSeek key when Claude secret is not configured', async () => {
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async (url) => {
+    assert.equal(url,'https://api.deepseek.com/chat/completions');
+    return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({words:[word]})}}]}),{status:200});
+  };
+  try {
+    const settings={...env,ANTHROPIC_API_KEY:undefined,DEEPSEEK_API_KEY:'LOCAL-DEEPSEEK-KEY'};
+    const response=await anchor.fetch(request('/spywords/v1/packs/generate','POST',
+      {existingWords:[],count:1,requestedWords:['astute']}),settings,{});
+    assert.equal(response.status,200);
+  } finally {globalThis.fetch=originalFetch;}
+});
+
+test('Missing Claude and DeepSeek secrets returns 503 (but backup has its own D1 requirement)', async () => {
+  const settings={...env,ANTHROPIC_API_KEY:undefined,DEEPSEEK_API_KEY:undefined};
+  const response=await anchor.fetch(request('/spywords/v1/packs/generate','POST',
+    {existingWords:[],count:1,requestedWords:['astute']}),settings,{});
+  assert.equal(response.status,503);
+});
+
+test('Claude can generate a fresh clue using its required JSON tool', async () => {
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async (url,opts) => {
+    assert.equal(url,'https://api.anthropic.com/v1/messages');
+    assert.equal(JSON.parse(opts.body).tool_choice.name,'spy_fresh_clues');
+    return new Response(JSON.stringify({content:[{type:'tool_use',name:'spy_fresh_clues',
+      input:{clues:[{id:'q1',sentence:'The ___ student noticed a detail everyone else missed in the ancient puzzle.'}]}}]}),{status:200});
+  };
+  try {
+    const q={id:'q1',mode:'typed',lemma:'astute',definition:word.definition,answer:'astute',
+      originalSentence:'The student was ___ when studying the clue.'};
+    const r=await anchor.fetch(request('/spywords/v1/clues/remix','POST',{questions:[q]}),env,{});
+    assert.equal(r.status,200,JSON.stringify(await r.clone().json()));
+    assert.deepEqual((await r.json()).clues.map(c=>c.id),['q1']);
+  } finally {globalThis.fetch=originalFetch;}
 });
 
 console.log('Anchor / Spy Words integration checks complete; no live paid model calls.');

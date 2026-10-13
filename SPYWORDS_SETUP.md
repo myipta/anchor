@@ -1,65 +1,45 @@
-# Spy Words AI Bridge on Anchor
+# Spy Words AI Bridge on the existing Anchor Cloudflare Worker
 
-This integration uses the **existing** Cloudflare Worker named `anchor` and does not replace Anchor's travel API, email, D1, or static assets.
+The **same Anchor Worker** hosts Spy Words at `/spywords/`. Anchor's travel endpoints, session authentication, email intake, D1 trip records, and static assets remain separate.
 
-## What is included
+## AI provider: reuse your existing Claude or DeepSeek secret
 
-- `functions/spywords-handler.mjs` implements `/spywords/*` and reuses an encrypted `OPENAI_API_KEY` binding **on the Anchor Worker**.
-- `worker.js` delegates `/spywords/*` to the handler before the existing Anchor API and assets router.
-- All generation routes require an independent `SPYWORDS_BRIDGE_TOKEN`; no OpenAI key is stored in iOS or GitHub.
-- Both the 48-word offline game and manual non-AI vocabulary imports continue to work without this setup.
+Spy Words **does not require an OpenAI API key**.
 
-## One-time Cloudflare secret setup
+The Worker uses existing encrypted environment bindings:
+- `ANTHROPIC_API_KEY` — **preferred when present**, using `ANTHROPIC_MODEL` or `claude-sonnet-4-6`.
+- `DEEPSEEK_API_KEY` — **automatic fallback when Claude is not configured**, using `DEEPSEEK_MODEL` or `deepseek-v4-pro`.
 
-In **Cloudflare Dashboard → Workers & Pages → anchor → Settings → Variables and Secrets**:
+Optional non-secret Worker variable: `SPYWORDS_AI_PROVIDER=deepseek` (or `claude`) to explicitly select a provider. If explicitly selected but that key is missing, the Worker returns 503; it does **not** silently substitute another vendor. The default uses Claude when present, otherwise DeepSeek. If a chosen provider returns an API error, the Worker returns 502 rather than making a potentially billable second request to the other provider.
 
-1. Confirm an encrypted secret named **`OPENAI_API_KEY`** is attached to **anchor**. A key on a different Worker is *not* automatically available here. The code expects this exact binding name. **Do not paste its value into GitHub, the app, or chat.**
-2. Create a separate, random access token on your Mac:
-   ```sh
-   openssl rand -hex 24
-   ```
-3. Add a new **Secret** called **`SPYWORDS_BRIDGE_TOKEN`** on the Anchor Worker. Paste that generated access token as the value. Save it securely so you can enter the same token in Spy Words.
-4. Optionally set `OPENAI_MODEL` (otherwise `gpt-4.1-mini`). For a browser preview only, `SPYWORDS_ALLOWED_ORIGIN` must be the exact preview origin; never use `*`. Leave it unset for the native iPhone app.
+Existing encrypted secrets must be attached to the **anchor** Worker. A secret on a different Worker is not shared. Keep key values in Cloudflare, never GitHub or the iPhone app.
 
-**Important:** Adding/changing a Worker secret can cause a deployment; follow Cloudflare's review prompt. Do not overwrite existing secrets or unrelated config.
+The separate **`SPYWORDS_BRIDGE_TOKEN`** is required for the two AI POST endpoints **and** Cloudflare D1 backup. It must be the same random token you already entered on the iPhone. Do not share or replace it unnecessarily.
 
-## Deploy
+## Deploy and verify
 
-This branch is a proposed source change, **not a live Worker deployment**. After reviewing and merging it, use Anchor's normal deployment process or the existing GitHub integration:
+Use Anchor's existing GitHub deployment workflow. You do not need to install new npm packages or rebuild the iPhone app for the provider change. The Worker-only change takes effect when deployed.
 
-```sh
-npm ci
-npm run check
-npm run deploy
-```
-
-Cloudflare deployment retains existing encrypted Worker secrets. If Anchor's production secret is not named `OPENAI_API_KEY`, adapt the handler's secret reference to its actual name without revealing the value.
-
-## Verify and connect the iPhone
-
-Anchor's existing setup documents `anchor.mattyip.dev`. If that's still the active hostname:
-
-1. Open `https://anchor.mattyip.dev/spywords/health` in Safari. A deployed handler returns `{"status":"ok"}`. This verifies routing **only**, not OpenAI credentials.
-2. In **Spy Words → HQ → Settings → AI Bridge**, enter:
-   - **AI Bridge HTTPS URL:** `https://anchor.mattyip.dev/spywords`
-   - **Bridge access token:** the value you generated for `SPYWORDS_BRIDGE_TOKEN` — **not** the OpenAI API key
-3. Tap **Save AI connection**, then **HQ → Add Your Own Words → Paste details → Use AI for missing exercises**. The request creates a draft that you must review and approve. Existing definitions and synonyms remain authoritative.
-
-If the hostname has changed, use your current Anchor Worker HTTPS hostname with the same `/spywords` suffix.
+1. Confirm Cloudflare Workers → anchor → Settings → Variables and Secrets has **ANTHROPIC_API_KEY** or **DEEPSEEK_API_KEY**, plus **SPYWORDS_BRIDGE_TOKEN**. No actual values should be copied out of Cloudflare.
+2. After deployment, visit `https://anchor.mattyip.dev/spywords/health`. Expected: `{"status":"ok"}` (routing only).
+3. In **Spy Words → HQ → Settings → AI Bridge**, retain `https://anchor.mattyip.dev/spywords` and your existing bridge token.
+4. Test with **HQ → Add Your Own Words → Paste details → Use AI for missing exercises**. Parent-authored definitions, synonyms and mnemonic notes take precedence over AI output, and no vocabulary is saved until parent approval.
+5. Separately tap **Cloudflare backup & sync → Sync now** to verify Cloudflare D1 backup. A 503 from sync indicates missing `DB` binding, **not** missing AI credentials.
 
 ### API routes
 
-| Method | Path | Authentication |
-| --- | --- | --- |
-| GET | `/spywords/health` | None; reveals no key |
-| POST | `/spywords/v1/packs/generate` | Bearer bridge token |
-| POST | `/spywords/v1/clues/remix` | Bearer bridge token |
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/spywords/health` | none (no secrets disclosed) |
+| POST | `/spywords/v1/packs/generate` | `Authorization: Bearer <SPYWORDS_BRIDGE_TOKEN>` |
+| POST | `/spywords/v1/clues/remix` | same |
+| GET/POST | `/spywords/v1/sync` | same; requires Anchor's `DB` binding |
 
-### Safety / operational notes
+### Testing and safeguards
 
-- Token is a simple shared secret intended for a family/private pilot. Never hardcode it in client source or GitHub.
-- The included rate limiter is per Worker isolate, **not** a strict account-level spending cap. Set an OpenAI project budget and alerts.
-- The Worker does not send a child's name, results, or history; it sends vocabulary words and practice content.
-- Any generated content needs parent review before approval. AI can still produce inaccurate or ambiguous exercises.
-- This integration does not access Anchor's D1 trip data or modify its authentication/email routes.
-- Run tests locally: `node --test scripts/check-spywords.mjs`. All model calls in tests are mocked.
+`npm run check` includes mocked Claude and DeepSeek endpoint tests and sync checks. No paid model calls occur during these tests.
+
+- The client sends vocabulary prompts, not the child's name or answer history, to AI providers. Sync **does** store approved words and learning progress in Anchor D1 (see `SPYWORDS_SYNC.md`).
+- Parent review is mandatory because generated questions may still be semantically wrong despite validation.
+- Shared-token access is suitable only for a private family pilot. Rate limiting in the Worker is per isolate, not a guaranteed global spending cap. Use provider-side spending alerts.
+- Never put provider keys or Bridge tokens in source code.
