@@ -257,16 +257,31 @@ export async function handleSpyWordsRequest(request, env) {
                         existing.some(e => e.toLowerCase() === w.toLowerCase())))))
                 return send(400,{error:'Provide 1–12 distinct new words, or a valid count (1–12).'});
             const parentChoseWords=Array.isArray(requested);
-            const output = await providerJSON(env, {
-                schema:packSchema,schemaName:'spy_word_pack',maxTokens:10500,
+            const writeGroup = (selectedWords, suppliedDetails) => {
+                const groupCount = selectedWords?.length ?? count;
+                return providerJSON(env, {
+                schema:packSchema,schemaName:'spy_word_pack',maxTokens:Math.min(10500,Math.max(2500,groupCount * 1300)),
                 instructions:`You create ACCURATE, age-appropriate ISEE middle-grade vocabulary study materials for a 10–12 year old.
-                ${parentChoseWords ? `The PARENT chose exactly ${count} words. Use precisely these words in exactly the supplied order and spelling; NEVER swap, add, or omit a word.` : `Choose exactly ${count} DISTINCT established English vocabulary words, not neologisms, not proper nouns, not already in the provided list. Aim for authentic ISEE/SSAT 5th–7th grade difficulty.`}
-                ${sourceEntries ? `The parent has already supplied authoritative study information: definitions, synonyms, antonyms, mnemonic notes and possibly example sentences. NEVER reword or replace those supplied fields. Create original questions only for missing exercise fields, using the precise parent-supplied meaning. If a parent supplied a complete items object, preserve it. Do not hallucinate a different sense of the word.` : `For every word provide a simple factual definition, synonyms, antonyms, an English phonetic pronunciation, one clear memory tip and a useful nuance warning.`}
+                ${parentChoseWords ? `The PARENT chose exactly ${groupCount} words. Use precisely these words in exactly the supplied order and spelling; NEVER swap, add, or omit a word.` : `Choose exactly ${groupCount} DISTINCT established English vocabulary words, not neologisms, not proper nouns, not already in the provided list. Aim for authentic ISEE/SSAT 5th–7th grade difficulty.`}
+                ${suppliedDetails ? `The parent has already supplied authoritative study information: definitions, synonyms, antonyms, mnemonic notes and possibly example sentences. NEVER reword or replace those supplied fields. Create original questions only for missing exercise fields, using the precise parent-supplied meaning. If a parent supplied a complete items object, preserve it. Do not hallucinate a different sense of the word.` : `For every word provide a simple factual definition, synonyms, antonyms, an English phonetic pronunciation, one clear memory tip and a useful nuance warning.`}
                 inputAsTyped must be the correct spelling of lemma. flags is [] unless a term needs a parent sensitivity note.
                 Include 3 spy/adventure-flavored exercises per word: fillIn (one ___ in sentence, answer equals the appropriate word form, 3 genuinely wrong options with meanings), synonym (1–3 accurate acceptedAnswers also in synonyms, exactly 3 clearly incorrect decoys with meanings), typed (a NEW sentence with one ___ and exact missing inflected word; formHint null or a tense hint). Do not repeat answers in the sentence, never put additional blanks. Ensure all distractors are plausible but unambiguously wrong.
                 Avoid violence, bullying, bias, body shaming, personal data, and sensitive religious generalizations. Spy theme can include secret codes, museums, puzzles and gadgets. Return structured JSON only.`,
-                input:JSON.stringify({alreadyInVault:existing,count,requestedWords:parentChoseWords?requested:undefined,parentSuppliedEntries:sourceEntries})
-            });
+                input:JSON.stringify({alreadyInVault:existing,count:groupCount,requestedWords:selectedWords,parentSuppliedEntries:suppliedDetails})
+                });
+            };
+            // Parent-selected packs can be large (3 exercises per word).
+            // Generate at most three independent 4-word batches concurrently to
+            // keep each provider response comfortably within the iOS timeout.
+            // AI-picked packs keep the single-request path to avoid duplicates.
+            const groups = parentChoseWords && count > 4
+                ? Array.from({length:Math.ceil(count / 4)},(_,i)=>i*4)
+                : null;
+            const output = groups
+                ? {words:(await Promise.all(groups.map(start =>
+                    writeGroup(requested.slice(start,start+4),sourceEntries?.slice(start,start+4))
+                ))).flatMap(part => Array.isArray(part?.words) ? part.words : [])}
+                : await writeGroup(requested,sourceEntries);
             // Parent-authored facts always override model-generated material.
             if (Array.isArray(sourceEntries) && Array.isArray(output.words) && output.words.length === count) {
                 output.words = output.words.map((word,i) => {

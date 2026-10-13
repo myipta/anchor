@@ -185,4 +185,55 @@ test('Claude can generate a fresh clue using its required JSON tool', async () =
   } finally {globalThis.fetch=originalFetch;}
 });
 
+
+test('12 parent-selected words generate in parallel groups of four without changing parent facts', async () => {
+  const chosen = ['astute','benevolent','clandestine','dubious','ephemeral','furtive',
+    'gregarious','haphazard','impetuous','judicious','kinetic','lethargic'];
+  const originalFetch=globalThis.fetch;
+  const batched=[];
+  let concurrent=0, maxConcurrent=0;
+  globalThis.fetch=async (url,opts) => {
+    assert.equal(url,'https://api.anthropic.com/v1/messages');
+    const body=JSON.parse(opts.body);
+    const input=JSON.parse(body.messages[0].content);
+    batched.push(input);
+    concurrent++;
+    maxConcurrent=Math.max(maxConcurrent,concurrent);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    concurrent--;
+    const words=input.requestedWords.map(lemma=>({
+      ...word,lemma,inputAsTyped:lemma,definition:'incorrect model guess',
+      items:{
+        ...word.items,
+        fillIn:{...word.items.fillIn,answer:lemma},
+        typed:{...word.items.typed,answer:lemma}
+      }
+    }));
+    return new Response(JSON.stringify({content:[{
+      type:'tool_use',name:'spy_word_pack',input:{words}
+    }]}),{status:200});
+  };
+  try {
+    const sources=chosen.map(lemma=>({
+      lemma,definition:'Parent definition of '+lemma,
+      synonyms:['perceptive','observant'],antonyms:[],
+      pronunciation:'',partOfSpeech:'adjective',memoryHook:'Parent mnemonic',
+      watchOut:'',fillSentence:null,typedSentence:null,suppliedItems:null
+    }));
+    const result=await anchor.fetch(request('/spywords/v1/packs/generate','POST',{
+      existingWords:[],requestedWords:chosen,sourceEntries:sources,count:12
+    }),env,{});
+    assert.equal(result.status,200,JSON.stringify(await result.clone().json()));
+    const data=await result.json();
+    assert.equal(batched.length,3);
+    assert.deepEqual(batched.map(b=>b.count),[4,4,4]);
+    assert.deepEqual(batched.flatMap(b=>b.requestedWords),chosen);
+    assert.deepEqual(batched.flatMap(b=>b.parentSuppliedEntries.map(x=>x.lemma)),chosen);
+    assert.ok(maxConcurrent>1,'Expected overlapping provider requests');
+    assert.deepEqual(data.pack.words.map(x=>x.lemma),chosen);
+    assert.deepEqual(data.pack.words.map(x=>x.definition),sources.map(x=>x.definition));
+    assert.ok(data.pack.words.every(x=>x.memoryHook==='Parent mnemonic'));
+  } finally {globalThis.fetch=originalFetch;}
+});
+
 console.log('Anchor / Spy Words integration checks complete; no live paid model calls.');
