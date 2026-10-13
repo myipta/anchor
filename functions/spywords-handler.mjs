@@ -4,6 +4,8 @@
  * Integrate in that Worker's fetch handler using handleSpyWordsRequest().
  * Routes live under /spywords/ to avoid interfering with existing Worker routes.
  */
+import { handleSpyWordsSync } from './spywords-sync.mjs';
+
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 const MAX_BODY = 64 * 1024;
 const limits = new Map(); // per-isolate safety guard, NOT a durable global rate limit.
@@ -127,7 +129,7 @@ function allowedCall(env) {
     return true;
 }
 
-async function readJSON(request) {
+async function readJSON(request, maxBytes = MAX_BODY) {
     if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json'))
         throw Object.assign(new Error('Content-Type must be application/json'),{status:415});
     const reader = request.body?.getReader();
@@ -138,7 +140,7 @@ async function readJSON(request) {
             const {done,value} = await reader.read();
             if (done) break;
             total += value.byteLength;
-            if (total > MAX_BODY) throw Object.assign(new Error('Request is too large'),{status:413});
+            if (total > maxBytes) throw Object.assign(new Error('Request is too large'),{status:413});
             chunks.push(value);
         }
     } finally {reader.releaseLock();}
@@ -164,11 +166,15 @@ export async function handleSpyWordsRequest(request, env) {
             if (!allowedOrigin) return send(403,{error:'Origin not allowed'});
             return new Response(null,{status:204,headers:{
                 'Access-Control-Allow-Origin':allowedOrigin,
-                'Access-Control-Allow-Methods':'POST, OPTIONS',
+                'Access-Control-Allow-Methods':'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers':'Authorization, Content-Type',
                 'Access-Control-Max-Age':'300','Vary':'Origin'}});
         }
         if (request.method === 'GET' && path === '/spywords/health') return send(200,{status:'ok'});
+        if (path === '/spywords/v1/sync') {
+            if (!(await authorized(request, env))) return send(401,{error:'Unauthorized bridge token'});
+            return await handleSpyWordsSync(request, env, {readJSON, validatePack, send});
+        }
         if (request.method !== 'POST' || !['/spywords/v1/packs/generate','/spywords/v1/clues/remix'].includes(path))
             return send(404,{error:'Not found'});
         if (!(await authorized(request, env))) return send(401,{error:'Unauthorized bridge token'});
