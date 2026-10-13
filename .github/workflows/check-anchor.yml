@@ -1,0 +1,24 @@
+name: Check Anchor including Spy Words sync
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "worker.js"
+      - "functions/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/check-anchor.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
