@@ -41,6 +41,28 @@ test('Spy Words health works through the real Anchor Worker entry', async () => 
   assert.deepEqual(await response.json(), { status: 'ok' });
 });
 
+test('Quest planner uses existing authentication and provider without database writes', async () => {
+  const payload = { text: 'Piano every day except summer', today: '2026-10-29', timezone: 'America/Los_Angeles', ledger: { routines: {}, assignments: {} } };
+  const denied = await anchor.fetch(request('/spywords/v1/quests/plan', 'POST', payload, 'wrong'), env, {});
+  assert.equal(denied.status, 401);
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    calls++;
+    assert.equal(JSON.parse(options.body).tool_choice.name, 'quest_plan');
+    return new Response(JSON.stringify({ content: [{ type: 'tool_use', name: 'quest_plan', input: { clarification: 'Which summer dates?', actions: [] } }] }), { status: 200 });
+  };
+  try {
+    const response = await anchor.fetch(request('/spywords/v1/quests/plan', 'POST', payload), env, {});
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { clarification: 'Which summer dates?', actions: [] });
+    assert.equal(calls, 1);
+    const invalid = await anchor.fetch(request('/spywords/v1/quests/plan', 'POST', { ...payload, text: '' }), env, {});
+    assert.equal(invalid.status, 400);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('New AI routes refuse missing or invalid bridge token', async () => {
   const body = { existingWords: [], count: 1, requestedWords: ['astute'] };
   for (const t of [null, 'not-the-token']) {
