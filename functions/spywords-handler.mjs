@@ -5,7 +5,7 @@
  * Routes live under /spywords/ to avoid interfering with existing Worker routes.
  */
 import { handleSpyWordsSync } from './spywords-sync.mjs';
-import { questPlanRequest, validateQuestProposal } from './quest-planner.mjs';
+import { generateQuestProposal } from './quest-planner.mjs';
 
 const MAX_BODY = 64 * 1024;
 const limits = new Map(); // per-isolate safety guard, NOT a durable global rate limit.
@@ -89,7 +89,7 @@ function selectProvider(env) {
 }
 
 // Keys remain encrypted Worker secrets and are never sent to iOS.
-async function providerJSON(env, { instructions, input, schema, schemaName, maxTokens }) {
+async function providerJSON(env, { instructions, input, schema, schemaName, maxTokens, timeoutMs = 90000 }) {
     const {provider, key} = selectProvider(env);
     let response;
     if (provider === 'claude') {
@@ -108,7 +108,7 @@ async function providerJSON(env, { instructions, input, schema, schemaName, maxT
                 tools:[{name:schemaName,description:'Return Spy Words structured study material',input_schema:schema}],
                 tool_choice:{type:'tool',name:schemaName,disable_parallel_tool_use:true}
             }),
-            signal:AbortSignal.timeout(90000)
+            signal:AbortSignal.timeout(timeoutMs)
         });
     } else {
         response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -125,7 +125,7 @@ async function providerJSON(env, { instructions, input, schema, schemaName, maxT
                 max_tokens:maxTokens,
                 stream:false
             }),
-            signal:AbortSignal.timeout(90000)
+            signal:AbortSignal.timeout(timeoutMs)
         });
     }
     if (!response.ok) {
@@ -232,7 +232,7 @@ export async function handleSpyWordsRequest(request, env) {
         if (!allowedCall(env)) return send(429,{error:'AI request limit reached. Try again later.'});
         const body = await readJSON(request);
         if (path === '/spywords/v1/quests/plan') {
-            return send(200, validateQuestProposal(await providerJSON(env, questPlanRequest(body))));
+            return send(200, await generateQuestProposal(body, options => providerJSON(env, options)));
         }
         if (path === '/spywords/v1/packs/generate') {
             const existing=body?.existingWords;

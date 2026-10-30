@@ -4,6 +4,7 @@ import { webcrypto } from 'node:crypto';
 
 import anchor from '../worker.js';
 import { handleSpyWordsRequest, validatePack } from '../functions/spywords-handler.mjs';
+import { generateQuestProposal } from '../functions/quest-planner.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
@@ -69,6 +70,35 @@ test('New AI routes refuse missing or invalid bridge token', async () => {
     const response = await anchor.fetch(request('/spywords/v1/packs/generate', 'POST', body, t), env, {});
     assert.equal(response.status, 401);
   }
+});
+
+test('Quest planner repairs mixed clarification/actions once, without losing the reply', async () => {
+  const body = {text:'Piano daily. Parent reply: Keep existing plans and add missing days.',today:'2026-10-30',timezone:'America/Los_Angeles',ledger:{routines:{},assignments:{}}};
+  let calls = 0;
+  const result = await generateQuestProposal(body, async options => {
+    calls++;
+    assert.equal(JSON.parse(options.input).text, body.text);
+    assert.equal(options.timeoutMs, 35000);
+    if (calls === 1) return {clarification:'Here is the plan',actions:[{}]};
+    assert.match(options.instructions,/mixed_question_and_actions/);
+    return {clarification:'Should I add the uncovered weekdays starting today?',actions:[]};
+  });
+  assert.equal(calls,2);
+  assert.deepEqual(result.actions,[]);
+});
+
+test('Quest planner bounds failed repairs and does not retry upstream errors', async () => {
+  const body = {text:'Piano daily',today:'2026-10-30',timezone:'America/Los_Angeles',ledger:{routines:{},assignments:{}}};
+  let calls = 0;
+  await assert.rejects(generateQuestProposal(body, async () => {
+    calls++; return {clarification:'',actions:[]};
+  }), error => error.status === 422 && error.message.includes('Nothing was changed'));
+  assert.equal(calls,2);
+  calls = 0;
+  await assert.rejects(generateQuestProposal(body, async () => {
+    calls++; throw Object.assign(new Error('Unavailable'),{status:502});
+  }), error => error.status === 502);
+  assert.equal(calls,1);
 });
 
 test('Malformed generation input rejected without a provider call', async () => {
