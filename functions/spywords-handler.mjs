@@ -5,6 +5,7 @@
  * Routes live under /spywords/ to avoid interfering with existing Worker routes.
  */
 import { handleSpyWordsSync } from './spywords-sync.mjs';
+import { questPlanRequest, validateQuestProposal } from './quest-planner.mjs';
 
 const MAX_BODY = 64 * 1024;
 const limits = new Map(); // per-isolate safety guard, NOT a durable global rate limit.
@@ -225,11 +226,14 @@ export async function handleSpyWordsRequest(request, env) {
             if (!(await authorized(request, env))) return send(401,{error:'Unauthorized bridge token'});
             return await handleSpyWordsSync(request, env, {readJSON, validatePack, send});
         }
-        if (request.method !== 'POST' || !['/spywords/v1/packs/generate','/spywords/v1/clues/remix'].includes(path))
+        if (request.method !== 'POST' || !['/spywords/v1/packs/generate','/spywords/v1/clues/remix','/spywords/v1/quests/plan'].includes(path))
             return send(404,{error:'Not found'});
         if (!(await authorized(request, env))) return send(401,{error:'Unauthorized bridge token'});
         if (!allowedCall(env)) return send(429,{error:'AI request limit reached. Try again later.'});
         const body = await readJSON(request);
+        if (path === '/spywords/v1/quests/plan') {
+            return send(200, validateQuestProposal(await providerJSON(env, questPlanRequest(body))));
+        }
         if (path === '/spywords/v1/packs/generate') {
             const existing=body?.existingWords;
             const count=body?.count;
